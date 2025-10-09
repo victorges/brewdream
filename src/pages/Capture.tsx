@@ -12,8 +12,11 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from "@/components/ui/popover";
+import * as Player from '@livepeer/react/player';
+import { getSrc } from '@livepeer/react/external';
 import { createDaydreamStream, startWhipPublish, updateDaydreamPrompts } from '@/lib/daydream';
 import type { StreamDiffusionParams } from '@/lib/daydream';
+import { VideoRecorder, uploadToLivepeer, saveClipToDatabase } from '@/lib/recording';
 
 const FRONT_PROMPTS = [
   "studio ghibli portrait, soft rim light",
@@ -98,10 +101,13 @@ export default function Capture() {
 
   const [recording, setRecording] = useState(false);
   const [recordStartTime, setRecordStartTime] = useState<number | null>(null);
+  const [captureSupported, setCaptureSupported] = useState(true);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const sourceVideoRef = useRef<HTMLVideoElement>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
+  const recorderRef = useRef<VideoRecorder | null>(null);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -302,59 +308,105 @@ export default function Capture() {
     return baseIndices.map(idx => Math.max(0, Math.min(50, Math.round(idx * scale))));
   };
 
-  const startRecording = () => {
-    setRecording(true);
-    setRecordStartTime(Date.now());
+  const startRecording = async () => {
+    // Get the video element from the Livepeer Player
+    const playerVideo = playerContainerRef.current?.querySelector('video') as HTMLVideoElement;
+    
+    if (!playerVideo) {
+      toast({
+        title: 'Error',
+        description: 'Video player not ready',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check if captureStream is supported
+    if (!VideoRecorder.isSupported(playerVideo)) {
+      setCaptureSupported(false);
+      toast({
+        title: 'Recording not supported',
+        description: 'Your browser does not support video capture',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      const recorder = new VideoRecorder(playerVideo);
+      await recorder.start();
+      
+      recorderRef.current = recorder;
+      setRecording(true);
+      setRecordStartTime(Date.now());
+      
+      console.log('Recording started');
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to start recording',
+        variant: 'destructive',
+      });
+    }
   };
 
   const stopRecording = async () => {
-    if (!recordStartTime || !playbackId) return;
-
-    const duration = Date.now() - recordStartTime;
-    const clampedDuration = Math.max(3000, Math.min(10000, duration));
+    if (!recorderRef.current || !recordStartTime || !streamId) return;
 
     setRecording(false);
     setLoading(true);
 
     try {
-      // Create clip via Livepeer
-      const { data: clipData, error: clipError } = await supabase.functions.invoke('livepeer-clip', {
-        body: {
-          playbackId,
-          durationMs: clampedDuration,
-        },
+      // Stop the recorder and get the blob
+      const { blob, durationMs } = await recorderRef.current.stop();
+      recorderRef.current = null;
+
+      console.log('Recording stopped, uploading to Livepeer...');
+      
+      toast({
+        title: 'Processing...',
+        description: 'Uploading your clip to Livepeer Studio',
       });
 
-      if (clipError) throw clipError;
+      // Upload to Livepeer Studio
+      const filename = `daydream-clip-${Date.now()}.webm`;
+      const { assetId, playbackId: assetPlaybackId, downloadUrl } = await uploadToLivepeer(blob, filename);
 
-      // Save clip to database
+      console.log('Upload complete, saving to database...');
+
+      // Get session ID
       const { data: sessionData } = await supabase
         .from('sessions')
         .select('id')
         .eq('stream_id', streamId)
         .single();
 
-      if (sessionData) {
-        const { data: clip } = await supabase.from('clips').insert({
-          session_id: sessionData.id,
-          asset_playback_id: clipData.playbackId,
-          asset_url: clipData.downloadUrl,
-          prompt,
-          texture_id: selectedTexture,
-          texture_weight: selectedTexture ? textureWeight[0] : null,
-          t_index_list: calculateTIndexList(creativity[0], quality[0]),
-          duration_ms: clampedDuration,
-        }).select().single();
-
-        if (clip) {
-          toast({
-            title: 'Clip created!',
-            description: 'Redirecting to share...',
-          });
-          navigate(`/clip/${clip.id}`);
-        }
+      if (!sessionData) {
+        throw new Error('Session not found');
       }
+
+      // Save to database
+      const clip = await saveClipToDatabase({
+        assetId,
+        playbackId: assetPlaybackId,
+        downloadUrl,
+        durationMs,
+        sessionId: sessionData.id,
+        prompt,
+        textureId: selectedTexture,
+        textureWeight: selectedTexture ? textureWeight[0] : null,
+        tIndexList: calculateTIndexList(creativity[0], quality[0]),
+      });
+
+      toast({
+        title: 'Clip created!',
+        description: 'Redirecting to your clip...',
+      });
+
+      navigate(`/clip/${clip.id}`);
     } catch (error: unknown) {
+      console.error('Error creating clip:', error);
       toast({
         title: 'Error creating clip',
         description: error instanceof Error ? error.message : String(error),
@@ -464,13 +516,17 @@ export default function Capture() {
         </Button>
         <div className="relative aspect-square bg-neutral-950 rounded-3xl overflow-hidden border border-neutral-900 shadow-lg">
           {playbackId ? (
-            <iframe
-              src={`https://lvpr.tv/?v=${playbackId}&lowLatency=force`}
-              className="w-full h-full border-0"
-              allow="autoplay; encrypted-media; picture-in-picture"
-              allowFullScreen
-              title="Daydream Output"
-            />
+            <div ref={playerContainerRef} className="w-full h-full">
+              <Player.Root
+                src={getSrc(playbackId)}
+                autoPlay
+                muted
+              >
+                <Player.Container>
+                  <Player.Video className="w-full h-full object-cover" />
+                </Player.Container>
+              </Player.Root>
+            </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <Loader2 className="w-12 h-12 animate-spin text-neutral-400" />
@@ -615,13 +671,17 @@ export default function Capture() {
         </div>
 
         {/* Record Button */}
+        {!captureSupported && (
+          <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-lg p-3 text-sm text-yellow-200">
+            ⚠️ Video capture not supported on this browser. Recording is disabled.
+          </div>
+        )}
         <Button
-          onMouseDown={startRecording}
-          onMouseUp={stopRecording}
-          onTouchStart={startRecording}
-          onTouchEnd={stopRecording}
-          disabled={loading || !playbackId}
-          className="w-full h-16 bg-gradient-to-r from-neutral-200 to-neutral-500 text-neutral-900 font-semibold rounded-2xl hover:from-neutral-300 hover:to-neutral-600 transition-all duration-200"
+          onPointerDown={startRecording}
+          onPointerUp={stopRecording}
+          onPointerLeave={stopRecording}
+          disabled={loading || !playbackId || !captureSupported}
+          className="w-full h-16 bg-gradient-to-r from-neutral-200 to-neutral-500 text-neutral-900 font-semibold rounded-2xl hover:from-neutral-300 hover:to-neutral-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {recording ? (
             <span className="flex items-center gap-2">
@@ -635,7 +695,7 @@ export default function Capture() {
           ) : (
             <span className="flex items-center gap-2">
               <Sparkles className="w-6 h-6 text-neutral-900" />
-              Brew (3–10s)
+              Hold to Brew
             </span>
           )}
         </Button>
