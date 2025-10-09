@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -311,7 +311,7 @@ export default function Capture() {
   const startRecording = async () => {
     // Get the video element from the Livepeer Player
     const playerVideo = playerContainerRef.current?.querySelector('video') as HTMLVideoElement;
-    
+
     if (!playerVideo) {
       toast({
         title: 'Error',
@@ -335,11 +335,11 @@ export default function Capture() {
     try {
       const recorder = new VideoRecorder(playerVideo);
       await recorder.start();
-      
+
       recorderRef.current = recorder;
       setRecording(true);
       setRecordStartTime(Date.now());
-      
+
       console.log('Recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -363,7 +363,7 @@ export default function Capture() {
       recorderRef.current = null;
 
       console.log('Recording stopped, uploading to Livepeer...');
-      
+
       toast({
         title: 'Processing...',
         description: 'Uploading your clip to Livepeer Studio',
@@ -505,6 +505,10 @@ export default function Capture() {
     );
   }
 
+  const src = useMemo(() => {
+    return getSrc(playbackId);
+  }, [playbackId]);
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 p-4">
       <div className="max-w-2xl mx-auto space-y-4">
@@ -518,10 +522,8 @@ export default function Capture() {
           {playbackId ? (
             <div ref={playerContainerRef} className="w-full h-full">
               <Player.Root
-                src={getSrc(playbackId)}
-                playbackId={playbackId}
+                src={src}
                 autoPlay
-                muted
                 lowLatency="force"
               >
                 <Player.Container>
