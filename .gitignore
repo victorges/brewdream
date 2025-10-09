@@ -25,5 +25,6 @@ dist-ssr
 
 # Secrets
 supabase/.temp
+supabase/.branches
 .env
 .env.local
