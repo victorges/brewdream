@@ -41,60 +41,57 @@ cd <YOUR_PROJECT_NAME>
 # Step 3: Install the necessary dependencies.
 npm i
 
-# Step 4: Create .env.local and fill in any missing secrets (API keys, etc)
-cp .env.local.example .env.local
-# Edit .env.local to add any API keys you need for testing
-code .env.local || vim .env.local
+# Step 4: Get .env.local file from your team
+# Ask your team for the .env.local file with Supabase credentials
+# Place it in the project root (it's gitignored for security)
 
-# Step 5: Start local Supabase (Docker required)
-npm run supabase:start
-# This will start PostgreSQL, Auth, Storage, etc. locally
-# The seed.sql file will automatically create the test user
-
-# Alternative: Use hosted Supabase instead
-# Create a project at supabase.com and update .env.local with your URL and key
-
-# Step 6: Start the development server with auto-reloading and an instant preview.
+# Step 5: Start the development server
 npm run dev
 ```
 
 **Prerequisites:**
 - Node.js & npm - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-- Docker Desktop - [install from docker.com](https://www.docker.com/products/docker-desktop) (required for local Supabase)
+- `.env.local` file with Supabase credentials (ask your team)
 
-## Local Development Testing
+## Development Testing
 
-When running with local Supabase, a test account is automatically seeded for easy testing:
+**Anonymous Login (No Email Required):**
+1. Run `npm run dev`
+2. Go to http://localhost:8080/login
+3. Click "Continue without email"
+4. Start creating clips immediately!
 
-### Quick Start
+**Test Account (For Email Flow):**
+- On localhost, you can use `test@brew.local` for instant login
+- No OTP needed when running locally
+- Perfect for testing the full authenticated flow
 
-1. Make sure local Supabase is running: `supabase start`
-2. Start dev server: `npm run dev`
-3. Navigate to `/login` - email will be pre-filled with `test@brew.local`
-4. Click "Login (Dev Mode)" - you'll be auto-logged in without OTP
-5. Test the full flow: camera → record → clip → share
+**Real Email Testing:**
+- Enter any email → Get OTP code
+- Or add email to anonymous account for coffee tickets
 
-### How It Works
+### Quick Test Checklist
 
-**Local Supabase:**
-- Test user `test@brew.local` is auto-seeded via `supabase/seed.sql`
-- Runs automatically when you `supabase start`
-- No manual setup needed!
+```bash
+npm run dev
 
-**Hosted/Production Supabase:**
-- Test user doesn't exist by default
-- Will be created on first login attempt (if you're running on localhost)
-- Or just use real email OTP for testing
+# Test 1: Anonymous flow
+✓ Go to /login
+✓ Click "Continue without email"
+✓ Should redirect to /capture
+✓ Create a clip
 
-### Security Model
+# Test 2: Email upgrade
+✓ Go back to /start
+✓ Should show "Add your email"
+✓ Enter email → verify OTP
+✓ All clips still there!
 
-This approach is secure because:
-- ✅ **Production website** (not on localhost) = test account features disabled in UI
-- ✅ **Local Supabase** = test account auto-seeded for convenience
-- ✅ **Production Supabase** = test account won't exist (never seeded there)
-- ✅ Even if someone bypasses frontend, test user simply won't exist in production database
-
-**Key insight:** Test user is only seeded in local Supabase. Production database won't have it unless someone with database access creates it manually (which would require compromised credentials anyway).
+# Test 3: Test account (localhost only)
+✓ Email pre-filled: test@brew.local
+✓ Click "Login (Dev Mode)"
+✓ Instant access, no OTP
+```
 
 **Edit a file directly in GitHub**
 

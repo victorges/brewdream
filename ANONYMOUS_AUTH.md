@@ -123,18 +123,18 @@ SELECT * FROM users WHERE email = 'user@example.com';
 
 ## Testing
 
-### Local Development
+### Quick Start
+
+**Anonymous Flow:**
+1. `npm run dev`
+2. Go to http://localhost:8080/login
+3. Click "Continue without email"
+4. Should redirect to /capture immediately
 
 **Test Account (for email flow):**
 - Email: `test@brew.local`
 - Auto-login on localhost (no OTP needed)
-
-**Anonymous Flow:**
-1. `npm run supabase:start`
-2. `npm run dev`
-3. Go to http://localhost:8080/login
-4. Click "Continue without email"
-5. Should redirect to /capture immediately
+- Perfect for testing authenticated features
 
 **Email Linking:**
 1. Login anonymously first
@@ -146,12 +146,12 @@ SELECT * FROM users WHERE email = 'user@example.com';
 
 ## Benefits
 
-✅ **Faster onboarding** - No email required to start  
-✅ **Lower friction** - Event attendees can jump right in  
-✅ **Data persistence** - Anonymous sessions stored in browser  
-✅ **Easy upgrade** - Add email anytime to save permanently  
-✅ **Seamless transition** - Same user ID before/after email  
-✅ **Keeps test account** - Dev workflow unchanged  
+✅ **Faster onboarding** - No email required to start
+✅ **Lower friction** - Event attendees can jump right in
+✅ **Data persistence** - Anonymous sessions stored in browser
+✅ **Easy upgrade** - Add email anytime to save permanently
+✅ **Seamless transition** - Same user ID before/after email
+✅ **Keeps test account** - Dev workflow unchanged
 
 ## Security Notes
 
@@ -170,6 +170,6 @@ SELECT * FROM users WHERE email = 'user@example.com';
 
 ---
 
-**Implementation Date:** 2025-10-09  
-**Supabase Version:** Uses built-in anonymous auth  
+**Implementation Date:** 2025-10-09
+**Supabase Version:** Uses built-in anonymous auth
 **Compatible with:** All existing features (clips, sessions, tickets, gallery)
