@@ -55,19 +55,14 @@ npm run dev
 
 ## Development Testing
 
-**Anonymous Login (No Email Required):**
+**Anonymous Login (Fastest):**
 1. Run `npm run dev`
 2. Go to http://localhost:8080/login
 3. Click "Continue without email"
 4. Start creating clips immediately!
 
-**Test Account (For Email Flow):**
-- On localhost, you can use `test@brew.local` for instant login
-- No OTP needed when running locally
-- Perfect for testing the full authenticated flow
-
-**Real Email Testing:**
-- Enter any email → Get OTP code
+**Email OTP Testing:**
+- Enter any email → Get OTP code in inbox
 - Or add email to anonymous account for coffee tickets
 
 ### Quick Test Checklist
@@ -86,11 +81,6 @@ npm run dev
 ✓ Should show "Add your email"
 ✓ Enter email → verify OTP
 ✓ All clips still there!
-
-# Test 3: Test account (localhost only)
-✓ Email pre-filled: test@brew.local
-✓ Click "Login (Dev Mode)"
-✓ Instant access, no OTP
 ```
 
 **Edit a file directly in GitHub**

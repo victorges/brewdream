@@ -7,13 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 
-// Local development helpers
-const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const TEST_EMAIL = 'test@brew.local';
-const TEST_PASSWORD = 'test123456';
-
-const canUseTestAccount = isLocalDev;
-
 export function Login() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -41,13 +34,6 @@ export function Login() {
 
     checkExistingSession();
   }, [navigate]);
-
-  // Prepopulate test email in local dev
-  useEffect(() => {
-    if (canUseTestAccount && !isAnonymous) {
-      setEmail(TEST_EMAIL);
-    }
-  }, [isAnonymous]);
 
   const handleAnonymousLogin = async () => {
     setLoading(true);
@@ -88,46 +74,6 @@ export function Login() {
     setLoading(true);
 
     try {
-      // Local dev bypass for test email
-      if (email === TEST_EMAIL) {
-        if (!canUseTestAccount) {
-          throw new Error('Test account is only available in local development (localhost). Please use a real email address.');
-        }
-
-        // Try to sign in with test password first
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: TEST_EMAIL,
-          password: TEST_PASSWORD,
-        });
-
-        if (signInError) {
-          // If sign in fails, try to create the test user
-          const { error: signUpError } = await supabase.auth.signUp({
-            email: TEST_EMAIL,
-            password: TEST_PASSWORD,
-            options: {
-              emailRedirectTo: `${window.location.origin}/capture`,
-            }
-          });
-
-          if (signUpError) throw signUpError;
-        }
-
-        // Store or update user in our custom users table
-        await supabase
-          .from('users')
-          .upsert({ email: TEST_EMAIL }, { onConflict: 'email' });
-
-        toast({
-          title: 'Dev mode login',
-          description: 'Logged in automatically (local dev)',
-        });
-
-        navigate('/capture');
-        return;
-      }
-
-      // Normal OTP flow for production
       // If user is anonymous, we need to link their account
       if (isAnonymous) {
         // Update the anonymous user's email
@@ -272,30 +218,17 @@ export function Login() {
                   required
                   className="h-12 bg-card border-border text-foreground"
                 />
-                {email === TEST_EMAIL && (
-                  canUseTestAccount ? (
-                    <p className="text-xs text-muted-foreground mt-2">
-                      🧪 Dev mode: Auto-login enabled (no OTP needed)
-                    </p>
-                  ) : (
-                    <p className="text-xs text-destructive mt-2">
-                      ⚠️ Test account only works on localhost. Use a real email.
-                    </p>
-                  )
-                )}
               </div>
               <Button
                 type="submit"
-                disabled={loading || (email === TEST_EMAIL && !canUseTestAccount)}
+                disabled={loading}
                 className={`w-full h-12 ${isAnonymous ? 'bg-primary text-primary-foreground glow-primary' : 'bg-card border border-border hover:bg-accent'}`}
               >
                 {loading
                   ? 'Sending...'
-                  : (canUseTestAccount && email === TEST_EMAIL)
-                    ? 'Login (Dev Mode)'
-                    : isAnonymous
-                      ? 'Add email & get coffee ticket'
-                      : 'Send login code'}
+                  : isAnonymous
+                    ? 'Add email & get coffee ticket'
+                    : 'Send login code'}
               </Button>
             </form>
           </div>

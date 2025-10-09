@@ -22,13 +22,13 @@ npm run dev
 
 **Anonymous Login:**
 - Users can start creating clips without email
+- One click, no OTP, instant access
 - Session persists in browser
 - Optional: Add email later for coffee tickets
 
-**Test Account:**
-- Email: `test@brew.local`
-- Works on localhost only (auto-login, no OTP)
-- Perfect for quick testing
+**Email OTP:**
+- Standard magic link authentication
+- Works in dev and production
 
 **Stack:**
 - React + TypeScript + Vite
@@ -89,13 +89,14 @@ npm run lint     # Run linter
 - Check `.env.local` exists and has correct credentials
 - Ask team for latest `.env.local` file
 
-**"Test account not working"**
-- Only works on `localhost` or `127.0.0.1`
-- Production requires real email
-
 **"Anonymous login fails"**
-- Check Supabase anonymous auth is enabled in dashboard
-- Auth → Providers → Enable "Anonymous sign-ins"
+- Check Supabase dashboard: Auth → Providers → Enable "Anonymous sign-ins"
+- Make sure anonymous auth is enabled in Supabase settings
+
+**"OTP not received"**
+- Check spam folder
+- Verify email is correct
+- Check Supabase email provider is configured
 
 ## Environment Variables
 

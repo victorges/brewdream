@@ -130,19 +130,22 @@ SELECT * FROM users WHERE email = 'user@example.com';
 2. Go to http://localhost:8080/login
 3. Click "Continue without email"
 4. Should redirect to /capture immediately
-
-**Test Account (for email flow):**
-- Email: `test@brew.local`
-- Auto-login on localhost (no OTP needed)
-- Perfect for testing authenticated features
+5. Start creating clips!
 
 **Email Linking:**
 1. Login anonymously first
 2. Create a clip
 3. Go back to /start → redirects to /login
-4. See "Add your email" UI
+4. See "Add your email" UI (different icon/text)
 5. Enter email, verify OTP
 6. Check database - same user ID, now with email!
+
+**Email OTP Flow:**
+1. Go to /login
+2. Enter email
+3. Check inbox for OTP code
+4. Enter code → authenticated
+5. Redirect to /capture
 
 ## Benefits
 
