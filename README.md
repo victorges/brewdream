@@ -41,9 +41,60 @@ cd <YOUR_PROJECT_NAME>
 # Step 3: Install the necessary dependencies.
 npm i
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Step 4: Create .env.local and fill in any missing secrets (API keys, etc)
+cp .env.local.example .env.local
+# Edit .env.local to add any API keys you need for testing
+code .env.local || vim .env.local
+
+# Step 5: Start local Supabase (Docker required)
+npm run supabase:start
+# This will start PostgreSQL, Auth, Storage, etc. locally
+# The seed.sql file will automatically create the test user
+
+# Alternative: Use hosted Supabase instead
+# Create a project at supabase.com and update .env.local with your URL and key
+
+# Step 6: Start the development server with auto-reloading and an instant preview.
 npm run dev
 ```
+
+**Prerequisites:**
+- Node.js & npm - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+- Docker Desktop - [install from docker.com](https://www.docker.com/products/docker-desktop) (required for local Supabase)
+
+## Local Development Testing
+
+When running with local Supabase, a test account is automatically seeded for easy testing:
+
+### Quick Start
+
+1. Make sure local Supabase is running: `supabase start`
+2. Start dev server: `npm run dev`
+3. Navigate to `/login` - email will be pre-filled with `test@brew.local`
+4. Click "Login (Dev Mode)" - you'll be auto-logged in without OTP
+5. Test the full flow: camera → record → clip → share
+
+### How It Works
+
+**Local Supabase:**
+- Test user `test@brew.local` is auto-seeded via `supabase/seed.sql`
+- Runs automatically when you `supabase start`
+- No manual setup needed!
+
+**Hosted/Production Supabase:**
+- Test user doesn't exist by default
+- Will be created on first login attempt (if you're running on localhost)
+- Or just use real email OTP for testing
+
+### Security Model
+
+This approach is secure because:
+- ✅ **Production website** (not on localhost) = test account features disabled in UI
+- ✅ **Local Supabase** = test account auto-seeded for convenience
+- ✅ **Production Supabase** = test account won't exist (never seeded there)
+- ✅ Even if someone bypasses frontend, test user simply won't exist in production database
+
+**Key insight:** Test user is only seeded in local Supabase. Production database won't have it unless someone with database access creates it manually (which would require compromised credentials anyway).
 
 **Edit a file directly in GitHub**
 

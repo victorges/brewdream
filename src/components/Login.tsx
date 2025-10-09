@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -6,6 +6,18 @@ import { Mail, ArrowLeft } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
+
+// Local development helpers
+const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const TEST_EMAIL = 'test@brew.local';
+const TEST_PASSWORD = 'test123456';
+
+// Security note: We only check if the app is running on localhost.
+// This is sufficient because:
+// 1. Production website won't be on localhost, so test account won't work there
+// 2. Local dev with production Supabase is a common setup (requires .env keys = authorized access)
+// 3. If someone has Supabase keys, they already have access to that instance
+const canUseTestAccount = isLocalDev;
 
 export function Login() {
   const [email, setEmail] = useState('');
@@ -15,11 +27,58 @@ export function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Prepopulate test email in local dev (only if both app and Supabase are local)
+  useEffect(() => {
+    if (canUseTestAccount) {
+      setEmail(TEST_EMAIL);
+    }
+  }, []);
+
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
     try {
+      // Local dev bypass for test email
+      if (email === TEST_EMAIL) {
+        if (!canUseTestAccount) {
+          throw new Error('Test account is only available in local development (localhost). Please use a real email address.');
+        }
+
+        // Try to sign in with test password first
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: TEST_EMAIL,
+          password: TEST_PASSWORD,
+        });
+
+        if (signInError) {
+          // If sign in fails, try to create the test user
+          const { error: signUpError } = await supabase.auth.signUp({
+            email: TEST_EMAIL,
+            password: TEST_PASSWORD,
+            options: {
+              emailRedirectTo: `${window.location.origin}/capture`,
+            }
+          });
+
+          if (signUpError) throw signUpError;
+        }
+
+        // Store or update user in our custom users table
+        await supabase
+          .from('users')
+          .upsert({ email: TEST_EMAIL }, { onConflict: 'email' });
+
+        toast({
+          title: 'Dev mode login',
+          description: 'Logged in automatically (local dev)',
+        });
+
+        navigate('/capture');
+        return;
+      }
+
+      // Normal OTP flow for production
       // Store or update user in our custom users table
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -72,7 +131,7 @@ export function Login() {
         title: 'Success!',
         description: 'Logged in successfully',
       });
-      
+
       navigate('/capture');
     } catch (error: any) {
       toast({
@@ -116,13 +175,24 @@ export function Login() {
                 required
                 className="h-12 bg-card border-border text-foreground"
               />
+              {email === TEST_EMAIL && (
+                canUseTestAccount ? (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    🧪 Dev mode: Auto-login enabled (no OTP needed)
+                  </p>
+                ) : (
+                  <p className="text-xs text-destructive mt-2">
+                    ⚠️ Test account only works on localhost. Use a real email.
+                  </p>
+                )
+              )}
             </div>
             <Button
               type="submit"
-              disabled={loading}
+              disabled={loading || (email === TEST_EMAIL && !canUseTestAccount)}
               className="w-full h-12 bg-primary text-primary-foreground glow-primary"
             >
-              {loading ? 'Sending...' : 'Send login code'}
+              {loading ? 'Sending...' : (canUseTestAccount && email === TEST_EMAIL ? 'Login (Dev Mode)' : 'Send login code')}
             </Button>
           </form>
         ) : (
