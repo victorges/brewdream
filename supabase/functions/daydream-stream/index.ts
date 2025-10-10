@@ -36,7 +36,7 @@ serve(async (req) => {
     });
 
     const data = await response.json();
-    console.log('Daydream stream created - Full response:', JSON.stringify(data, null, 2));
+    console.log('Daydream stream created:', data);
 
     if (!response.ok) {
       console.error('Daydream API error:', data);
@@ -46,10 +46,9 @@ serve(async (req) => {
       });
     }
 
-    // Temporarily return full data to debug playback URL format
-    // TODO: Return only essential fields for security after debugging
-    console.log('Returning stream data:', data);
-    return new Response(JSON.stringify(data), {
+    // Return only the essential fields for security
+    const { id, output_playback_id, whip_url } = data;
+    return new Response(JSON.stringify({ id, output_playback_id, whip_url }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {

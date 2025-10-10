@@ -155,11 +155,6 @@ export default function Capture() {
       // Create Daydream stream using the helper
       const streamData = await createDaydreamStream();
 
-      console.log('=== Full Daydream Stream Data ===');
-      console.log('Stream created:', JSON.stringify(streamData, null, 2));
-      console.log('output_playback_id:', streamData.output_playback_id);
-      console.log('output_playback_id type:', typeof streamData.output_playback_id);
-      console.log('================================');
       setStreamId(streamData.id);
       setPlaybackId(streamData.output_playback_id);
       setWhipUrl(streamData.whip_url);
@@ -423,29 +418,19 @@ export default function Capture() {
   };
 
   const src = useMemo(() => {
-    console.log('=== Computing src ===');
-    console.log('playbackId:', playbackId);
-
     if (!playbackId) {
-      console.log('playbackId is null/undefined - returning null');
       return null;
     }
 
     // Try getSrc first (works for standard Livepeer playback IDs)
     const result = getSrc(playbackId);
-    console.log('getSrc result:', result);
 
     if (result && Array.isArray(result) && result.length > 0) {
-      console.log('Using getSrc result with', result.length, 'sources');
       return result;
     }
 
     // For Daydream streams, construct WebRTC source manually
     // Daydream uses Livepeer infrastructure but may have different endpoints
-    console.log('getSrc failed, constructing WebRTC source manually for Daydream playback ID');
-
-    // Try multiple source formats for maximum compatibility
-    // Don't specify width/height - let the player detect from stream
     const manualSrc = [
       {
         src: `https://livepeer.studio/webrtc/${playbackId}`,
@@ -459,12 +444,9 @@ export default function Capture() {
       },
     ] as const;
 
-    console.log('Manual src constructed:', manualSrc);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return manualSrc as any;
   }, [playbackId]);
-  console.log("playbackId", playbackId);
-  console.log("src", src);
 
   useEffect(() => {
     if (prompt && streamId) {
@@ -474,35 +456,6 @@ export default function Capture() {
       return () => clearTimeout(debounce);
     }
   }, [prompt, selectedTexture, textureWeight, creativity, quality, streamId, updatePrompt]);
-
-  // Debug: Log actual video dimensions when loaded
-  useEffect(() => {
-    if (playerContainerRef.current) {
-      const checkVideoDimensions = () => {
-        const video = playerContainerRef.current?.querySelector('video');
-        if (video) {
-          console.log('=== Video Element Dimensions ===');
-          console.log('videoWidth:', video.videoWidth);
-          console.log('videoHeight:', video.videoHeight);
-          console.log('clientWidth:', video.clientWidth);
-          console.log('clientHeight:', video.clientHeight);
-          console.log('aspect ratio:', video.videoWidth / video.videoHeight);
-          console.log('================================');
-        }
-      };
-
-      // Check on loadedmetadata event
-      const video = playerContainerRef.current?.querySelector('video');
-      if (video) {
-        video.addEventListener('loadedmetadata', checkVideoDimensions);
-        // Also check immediately in case it's already loaded
-        if (video.videoWidth > 0) {
-          checkVideoDimensions();
-        }
-        return () => video.removeEventListener('loadedmetadata', checkVideoDimensions);
-      }
-    }
-  }, [playbackId, src]);
 
   if (!cameraType) {
     // Show loading state while auto-starting on desktop
