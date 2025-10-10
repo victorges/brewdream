@@ -196,9 +196,51 @@ export default function Capture() {
     }
   };
 
+  /**
+   * Mirror a video stream by rendering it through a canvas
+   * This ensures the mirrored stream goes to Daydream, so the output is naturally mirrored
+   */
+  const mirrorStream = (originalStream: MediaStream): MediaStream => {
+    // Create a hidden video element to play the original stream
+    const video = document.createElement('video');
+    video.srcObject = originalStream;
+    video.autoplay = true;
+    video.muted = true;
+    video.style.display = 'none';
+    document.body.appendChild(video);
+
+    // Create a canvas to mirror the video
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d')!;
+
+    // Start mirroring on each frame
+    const mirror = () => {
+      if (video.readyState >= video.HAVE_CURRENT_DATA) {
+        ctx.save();
+        ctx.scale(-1, 1); // Mirror horizontally
+        ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+      requestAnimationFrame(mirror);
+    };
+    video.addEventListener('loadeddata', () => mirror());
+
+    // Capture the mirrored stream from canvas
+    const mirroredVideoStream = canvas.captureStream(24); // 24 fps
+
+    // Add the original audio tracks to the mirrored stream
+    originalStream.getAudioTracks().forEach(track => {
+      mirroredVideoStream.addTrack(track);
+    });
+
+    return mirroredVideoStream;
+  };
+
   const startWebRTCPublish = async (whipUrl: string, type: 'front' | 'back') => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const originalStream = await navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: type === 'front' ? 'user' : 'environment',
           width: 512,
@@ -206,6 +248,9 @@ export default function Capture() {
         },
         audio: true,
       });
+
+      // Mirror the stream if using front camera
+      const stream = type === 'front' ? mirrorStream(originalStream) : originalStream;
 
       if (sourceVideoRef.current) {
         sourceVideoRef.current.srcObject = stream;
@@ -650,8 +695,7 @@ export default function Capture() {
                     style={{
                       width: '100%',
                       height: '100%',
-                      objectFit: 'cover',
-                      transform: cameraType === 'front' ? 'scaleX(-1)' : 'none'
+                      objectFit: 'cover'
                     }}
                   />
                   <Player.LoadingIndicator>
@@ -677,9 +721,6 @@ export default function Capture() {
               playsInline
               muted
               className="w-full h-full object-cover"
-              style={{
-                transform: cameraType === 'front' ? 'scaleX(-1)' : 'none'
-              }}
             />
           </div>
         </div>

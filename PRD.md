@@ -139,7 +139,11 @@ Routes (prefix `/functions/v1`):
     - Show real-time counter updating every 100ms during recording
     - Auto-stop at 10s, cancel if released before 3s
 - **Recording**: `videoElement.captureStream()` → `MediaRecorder` with 100ms timeslice → collect chunks → create blob → upload to Livepeer Studio
-- **Camera mirroring**: Apply `transform: scaleX(-1)` CSS to video element when using front camera for natural selfie experience
+- **Camera mirroring**: Mirror the MediaStream **at the source** (before Daydream) for front camera:
+  - Original stream → Canvas with `scaleX(-1)` → `captureStream(30)` → Mirrored MediaStream
+  - Send mirrored stream to Daydream via WHIP
+  - Daydream output is naturally mirrored (no CSS transforms needed)
+  - Keeps UI elements (loading spinners, text) readable
 - **Share**: `https://twitter.com/intent/tweet?text=Made%20this%20at%20%23RealtimeAIVideo%20Summit%20by%20%40livepeer%20%40DaydreamLiveAI&url={clipPageUrl}`.
 - **Ticket**: after clip save, call `/app/ticket` → show **QR** (code text as payload). Also email ticket link if email is known.
 - **Home**: query latest `clips` with their `asset_playback_id` and show square thumbnails (use poster from Playback Info or `poster` param).
