@@ -33,7 +33,7 @@ export class VideoRecorder {
   async start(): Promise<void> {
     // Capture stream from video element
     const stream = this.videoElement.captureStream?.();
-    
+
     if (!stream) {
       throw new Error('captureStream is not supported on this video element');
     }
@@ -46,7 +46,7 @@ export class VideoRecorder {
     ];
 
     this.mimeType = mimeCandidates.find(m => MediaRecorder.isTypeSupported(m)) || '';
-    
+
     if (!this.mimeType) {
       throw new Error('No supported video MIME type found');
     }
@@ -122,12 +122,12 @@ export async function uploadToLivepeer(
 
   // Step 2: Upload the blob
   const file = new File([blob], filename, { type: blob.type });
-  
+
   if (uploadData.tus?.url) {
     // TODO: Implement TUS upload if needed
     console.log('TUS upload available, but using direct PUT for simplicity');
   }
-  
+
   console.log('Uploading blob...', { size: blob.size, type: blob.type });
   const putResponse = await fetch(uploadData.uploadUrl, {
     method: 'PUT',
@@ -172,7 +172,7 @@ export async function uploadToLivepeer(
     }
 
     attempts++;
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise(resolve => setTimeout(resolve, 1000));
   }
 
   if (assetData?.status !== 'ready') {

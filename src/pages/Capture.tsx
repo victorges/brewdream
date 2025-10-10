@@ -110,6 +110,7 @@ export default function Capture() {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const recorderRef = useRef<VideoRecorder | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
+  const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -342,6 +343,11 @@ export default function Capture() {
       setRecording(true);
       setRecordStartTime(Date.now());
 
+      // Auto-stop at 10 seconds
+      autoStopTimerRef.current = setTimeout(() => {
+        stopRecording();
+      }, 10000);
+
       console.log('Recording started');
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -363,6 +369,34 @@ export default function Capture() {
 
   const stopRecording = async () => {
     if (!recorderRef.current || !recordStartTime || !streamId) return;
+
+    // Clear auto-stop timer
+    if (autoStopTimerRef.current) {
+      clearTimeout(autoStopTimerRef.current);
+      autoStopTimerRef.current = null;
+    }
+
+    const recordingDuration = Date.now() - recordStartTime;
+
+    // Check minimum duration (3 seconds)
+    if (recordingDuration < 3000) {
+      setRecording(false);
+
+      // Stop and discard the recording
+      try {
+        await recorderRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping recorder:', error);
+      }
+      recorderRef.current = null;
+
+      toast({
+        title: 'Recording too short',
+        description: 'Hold for at least 3 seconds to create a clip',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setRecording(false);
     setLoading(true);
