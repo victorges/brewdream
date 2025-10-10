@@ -150,7 +150,8 @@ export default function Capture() {
         setAutoStartChecked(true);
       }
     }
-  }, [autoStartChecked, cameraType, loading, selectCamera]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStartChecked, cameraType, loading]);
 
   const initializeStream = async (type: 'front' | 'back') => {
     setLoading(true);
