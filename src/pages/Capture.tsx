@@ -1339,7 +1339,7 @@ export default function Capture() {
 
           <div>
             <label className="text-sm font-medium mb-2 block text-neutral-300">
-              Intensity: {intensity[0].toFixed(1)} {intensity[0] <= 3 ? '☕️ Mild' : intensity[0] <= 6 ? '☕️☕️ Medium' : '☕️☕️☕️ Strong'}
+              Intensity: {intensity[0].toFixed(1)}
             </label>
             <Slider
               value={intensity}
@@ -1349,10 +1349,6 @@ export default function Capture() {
               step={0.1}
               className="w-full accent-neutral-400"
             />
-            <div className="flex justify-between text-xs text-neutral-500 mt-1">
-              <span>Chill</span>
-              <span>Psychedelic</span>
-            </div>
           </div>
 
             <div>

@@ -131,7 +131,7 @@ These are **non-negotiable** technical requirements:
 4. **AI Effect Controls** (Capture.tsx):
    - **Prompt**: Text description of style
    - **Texture**: Optional image overlay (8 presets)
-   - **Intensity** (1-10): Controls stylization strength via `t_index_list` (coffee-themed: 1=mild/chill, 10=strong/psychedelic)
+   - **Intensity** (1-10): Controls stylization strength via `t_index_list` (1=low/refined, 10=high/stylized)
    - **Quality** (0-1): Two-stage control - (1) number of steps at thresholds, (2) continuous value interpolation within ranges
    - **t_index_list**: Two-stage interpolation - intensity sets base values, quality shifts them toward higher indices
 
@@ -418,8 +418,8 @@ const clip = await saveClipToDatabase({ assetId, playbackId, ... });
 ```typescript
 // STAGE 1: Intensity interpolation (base values at quality range boundaries)
 // Intensity [1..10] determines stylization level (defaults to 5)
-low_intensity_target = [30, 35, 40, 45]   // intensity=1 (chill/refined)
-high_intensity_target = [6, 12, 18, 24]   // intensity=10 (psychedelic)
+low_intensity_target = [30, 35, 40, 45]   // intensity=1 (low/refined)
+high_intensity_target = [6, 12, 18, 24]   // intensity=10 (high/stylized)
 base[i] = high[i] + (low[i] - high[i]) * (10 - intensity) / 9
 
 // STAGE 2: Quality interpolation (step count + value shifting)
@@ -450,7 +450,7 @@ Intensity 10, Quality 0.50: [6, 12, 18]      // 3 steps, base values
 Intensity 10, Quality 0.75: [6, 12, 18, 24]  // 4 steps, base values
 Intensity 10, Quality 1.0: [12, 18, 24, 30]  // 4 steps, all shifted up (max refinement)
 
-Intensity 1, Quality 0.75: [30, 35, 40, 45]  // 4 steps, base chill values
+Intensity 1, Quality 0.75: [30, 35, 40, 45]  // 4 steps, low intensity base
 Intensity 1, Quality 1.0: [35, 40, 45, 50]   // 4 steps, shifted to maximum refinement
 
 Intensity 5, Quality 0.75: [19, 25, 30, 36]  // 4 steps, balanced

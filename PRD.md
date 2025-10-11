@@ -23,7 +23,7 @@ Mobile-first microsite for the **Realtime AI Video Summit (Open Source AI Week)*
     - **Controls (v1 minimal):**
         - **Prompt** (placeholder shows default chosen randomly for front/back based on a list you create for this context; user can overwrite).
         - **Texture** (IP-Adapter single-select, 8 options + “No texture” which is default), **Weight** slider when enabled [0..1]. Clean UI ideally same line
-        - **Intensity** [1..10] and **Quality** [0..1] → drives `t_index_list` (see mapping). Intensity is coffee-themed (1=mild/chill, 10=strong/psychedelic).
+        - **Intensity** [1..10] and **Quality** [0..1] → drives `t_index_list` (see mapping).
 5. **Capture**
     - **Hold-to-record** from **3–10s**. On release, create a **Livepeer clip** (server-side) for that duration ending “now”. Show progress → success.
 6. **Share**
@@ -73,8 +73,8 @@ Mobile-first microsite for the **Realtime AI Video Summit (Open Source AI Week)*
     - **Two-stage interpolation**: First intensity, then quality
     
     - **Stage 1 - Intensity** `∈ [1..10]` determines base stylization:
-        - **Intensity 1** (chill): Base targets `[30, 35, 40, 45]` - refined/realistic
-        - **Intensity 10** (psychedelic): Base targets `[6, 12, 18, 24]` - heavily stylized
+        - **Intensity 1** (low): Base targets `[30, 35, 40, 45]` - refined/realistic
+        - **Intensity 10** (high): Base targets `[6, 12, 18, 24]` - heavily stylized
         - Linear interpolation: `base[i] = high[i] + (low[i] - high[i]) * (10 - intensity) / 9`
         - Defaults to 5 (balanced: `[19, 25, 30, 36]` at quality range boundaries)
     
@@ -95,11 +95,11 @@ Mobile-first microsite for the **Realtime AI Video Summit (Open Source AI Week)*
         - Higher quality = more computation AND more refinement (values shift toward higher t_index)
     
     - **Examples**:
-        - Intensity 10, Quality 0.25: `[6, 12]` - base psychedelic, 2 steps
+        - Intensity 10, Quality 0.25: `[6, 12]` - high intensity, 2 steps
         - Intensity 10, Quality 0.50: `[6, 12, 18]` - add 3rd step
         - Intensity 10, Quality 0.75: `[6, 12, 18, 24]` - add 4th step
         - Intensity 10, Quality 1.0: `[12, 18, 24, 30]` - all values shifted up (more refined)
-        - Intensity 1, Quality 0.75: `[30, 35, 40, 45]` - base chill, 4 steps
+        - Intensity 1, Quality 0.75: `[30, 35, 40, 45]` - low intensity, 4 steps
         - Intensity 1, Quality 1.0: `[35, 40, 45, 50]` - values shifted up (maximum refinement)
     
     - **Rationale**: 
