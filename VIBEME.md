@@ -632,30 +632,27 @@ verify_jwt = false
 **Issues**: Multiple bugs in stream initialization and parameter updates:
 1. Stream always started with default psychedelic effect (not the prompt from camera selection)
 2. Sometimes showed loading state as if model_id changed (Daydream trying to load sdturbo default)
-3. Pipeline running on non-SDXL nodes (wrong pipeline_id format)
 
 **Root Causes**:
-- `createDaydreamStream()` only sent `pipeline_id` without initial params (prompt, model_id, etc.)
-- Daydream API requires **all params to be specified in stream creation**, even if disabled
-- Pipeline ID format was incorrect (`pip_SDXL-turbo` instead of `pip_sd-SDXL`)
+- `POST /v1/streams` API only accepts `pipeline_id` (no other params allowed)
+- No initial prompt update was being sent after stream creation
 - If `model_id` omitted from any param update, Daydream tries to reload default model
+- `ip_adapter` must always be specified (even if disabled) per Daydream API requirements
 
 **Solutions** (`src/lib/daydream.ts` + `src/pages/Capture.tsx`):
-1. Modified `createDaydreamStream()` to accept `initialParams` with full param structure
-2. Pass complete initial params on stream creation:
+1. Modified `createDaydreamStream()` to accept `initialParams` 
+2. After creating stream, immediately call `updateDaydreamPrompts()` with initial params:
    - `model_id`: Always set to `'stabilityai/sdxl-turbo'`
    - `prompt`: Use selected random prompt based on camera type
    - `t_index_list`: Calculate from initial creativity/quality values
    - `controlnets`: Specify all SDXL controlnets with conditioning scales
    - `ip_adapter`: Always include even when disabled (set `enabled: false`)
-3. Fixed pipeline_id format: `'pip_sd-SDXL'` (correct format for SDXL nodes)
-4. Added critical comments to always include `model_id` in param updates
-5. Ensured `ip_adapter` always specified in updates (even if disabled)
+3. Added critical comments to always include `model_id` in param updates
+4. Ensured `ip_adapter` always specified in updates (even if disabled)
 
 **Impact**: 
 - Stream now starts immediately with correct prompt/effect
 - No more loading/model reload issues during param updates
-- Pipeline runs on correct SDXL nodes
 - Consistent behavior across all parameter changes
 
 ## 📝 Coding Conventions
@@ -824,7 +821,7 @@ Avoid:
 ---
 
 **Last Updated**: 2025-10-11
-- Fixed critical params updating logic bugs: stream now starts with correct prompt, proper pipeline_id format (`pip_sd-SDXL`), and no model reload issues
+- Fixed critical params updating logic bugs: stream now starts with correct prompt (via immediate post-creation prompt update) and no model reload issues
 - Canvas-based mirroring at source for natural selfie mode
 - Interactive ticket redemption with swipe-to-validate UX
 - Fixed ICE gathering delay (40s → 2s) with STUN redundancy + timeout

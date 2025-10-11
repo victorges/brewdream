@@ -39,82 +39,28 @@ export interface StreamDiffusionParams {
 
 /**
  * Create a new Daydream stream with the StreamDiffusion pipeline
- * Accepts initial params to avoid starting with Daydream defaults
+ * If initialParams provided, immediately updates the stream with those params
  */
 export async function createDaydreamStream(initialParams?: StreamDiffusionParams): Promise<DaydreamStream> {
-  // Use correct pipeline ID format for SDXL
-  const pipeline_id = 'pip_sd-SDXL';
-  
-  // Build the request body with initial params if provided
-  const body: any = { 
-    pipeline_id,
-  };
-  
-  // If initial params provided, include them in the stream creation
-  if (initialParams) {
-    // Default controlnets for SDXL (all params must be specified even if disabled)
-    const defaultControlnets = [
-      {
-        enabled: true,
-        model_id: 'xinsir/controlnet-depth-sdxl-1.0',
-        preprocessor: 'depth_tensorrt',
-        preprocessor_params: {},
-        conditioning_scale: 0.3,
-      },
-      {
-        enabled: true,
-        model_id: 'xinsir/controlnet-canny-sdxl-1.0',
-        preprocessor: 'canny',
-        preprocessor_params: {},
-        conditioning_scale: 0,
-      },
-      {
-        enabled: true,
-        model_id: 'xinsir/controlnet-tile-sdxl-1.0',
-        preprocessor: 'feedback',
-        preprocessor_params: {},
-        conditioning_scale: 0,
-      },
-    ];
-    
-    const controlnets = (initialParams.controlnets || defaultControlnets).map((cn) => ({
-      enabled: true,
-      preprocessor_params: {},
-      ...cn,
-    }));
-    
-    body.model_id = 'streamdiffusion';
-    body.pipeline = 'live-video-to-video';
-    body.params = {
-      model_id: initialParams.model_id || 'stabilityai/sdxl-turbo',
-      prompt: initialParams.prompt,
-      negative_prompt: initialParams.negative_prompt || 'blurry, low quality, flat, 2d, distorted',
-      num_inference_steps: initialParams.num_inference_steps || 50,
-      seed: initialParams.seed || 42,
-      t_index_list: initialParams.t_index_list || [6, 12, 18],
-      controlnets,
-      // IP-Adapter: always specify even if disabled
-      ip_adapter: initialParams.ip_adapter || {
-        enabled: false,
-        type: 'regular',
-        scale: 0,
-        weight_type: 'linear',
-        insightface_model_name: 'buffalo_l',
-      },
-      ...(initialParams.ip_adapter_style_image_url
-        ? { ip_adapter_style_image_url: initialParams.ip_adapter_style_image_url }
-        : {}),
-    };
-  }
-  
+  // Step 1: Create stream (only accepts pipeline_id)
   const { data, error } = await supabase.functions.invoke('daydream-stream', {
-    body
+    body: { 
+      pipeline_id: 'pip_qpUgXycjWF6YMeSL' // StreamDiffusion SDXL pipeline
+    }
   });
 
   if (error) throw error;
   if (!data) throw new Error('No stream data returned');
 
-  return data as DaydreamStream;
+  const stream = data as DaydreamStream;
+
+  // Step 2: Immediately update with initial params if provided
+  // This prevents the stream from starting with Daydream defaults
+  if (initialParams) {
+    await updateDaydreamPrompts(stream.id, initialParams);
+  }
+
+  return stream;
 }
 
 /**
