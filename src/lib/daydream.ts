@@ -176,7 +176,7 @@ export async function updateDaydreamPrompts(
   // CRITICAL: Always include model_id to prevent Daydream from loading default
   // Also always specify ip_adapter even if disabled (API requirement)
   const body = {
-    model_id: 'streamdiffusion',
+    model_id: 'streamdiffusion-sdxl',
     pipeline: 'live-video-to-video',
     params: {
       model_id: params.model_id || 'stabilityai/sdxl-turbo', // ALWAYS include

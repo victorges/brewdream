@@ -632,15 +632,16 @@ verify_jwt = false
 
 **Solutions** (`src/lib/daydream.ts` + `src/pages/Capture.tsx`):
 1. Fixed pipeline_id to `'pip_SDXL-turbo'` (correct SDXL pipeline)
-2. Modified `createDaydreamStream()` to accept `initialParams` 
-3. After creating stream, immediately call `updateDaydreamPrompts()` with initial params:
+2. Fixed top-level model_id to `'streamdiffusion-sdxl'` (SDXL variant, not base streamdiffusion)
+3. Modified `createDaydreamStream()` to accept `initialParams` 
+4. After creating stream, immediately call `updateDaydreamPrompts()` with initial params:
    - `model_id`: Always set to `'stabilityai/sdxl-turbo'`
    - `prompt`: Use selected random prompt based on camera type
    - `t_index_list`: Calculate from initial creativity/quality values
    - `controlnets`: Specify all SDXL controlnets with conditioning scales
    - `ip_adapter`: Always include even when disabled (set `enabled: false`)
-4. Added critical comments to always include `model_id` in param updates
-5. Ensured `ip_adapter` always specified in updates (even if disabled)
+5. Added critical comments to always include `model_id` in param updates
+6. Ensured `ip_adapter` always specified in updates (even if disabled)
 
 **Impact**: 
 - Pipeline now runs on correct SDXL nodes
