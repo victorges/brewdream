@@ -131,9 +131,9 @@ These are **non-negotiable** technical requirements:
 4. **AI Effect Controls** (Capture.tsx):
    - **Prompt**: Text description of style
    - **Texture**: Optional image overlay (8 presets)
-   - **Creativity** (1-10): Controls denoise strength via `t_index_list`
+   - **Intensity** (1-10): Controls stylization strength via `t_index_list` (coffee-themed: 1=mild/chill, 10=strong/psychedelic)
    - **Quality** (0-1): Number of diffusion steps (0.25=1 step, 1.0=4 steps)
-   - **t_index_list**: `[6, 12, 18, 24]` scaled by creativity (formula: `2.62 - 0.132 * creativity`)
+   - **t_index_list**: `[6, 12, 18, 24]` scaled by intensity (formula: `3.5 - 0.25 * intensity`)
 
 5. **Clip Recording** (recording.ts + Capture.tsx):
    - **Button behavior**: Desktop (click toggle), Mobile (press & hold)
@@ -153,7 +153,7 @@ These are **non-negotiable** technical requirements:
 7. **Database Save** (recording.ts):
    - Look up session ID from stream
    - Save clip metadata via `save-clip` edge function
-   - Includes prompt, texture, creativity/quality params, duration
+   - Includes prompt, texture, intensity/quality params, duration
    - Navigate to clip page
 
 8. **Share & Reward** (ClipView.tsx):
@@ -282,7 +282,7 @@ All functions have `verify_jwt: false` (public access)
 - **Debounced updates**: 500ms delay on input change
 - **Auto-apply**: Changes trigger immediate stream update
 - **Texture overlay**: Optional, 8 presets, weight slider (0-1)
-- **Creativity/Quality**: Abstract sliders that map to diffusion parameters
+- **Intensity/Quality**: Abstract sliders that map to diffusion parameters (Intensity is coffee-themed)
 
 ### Ticket Redemption (ClipView.tsx)
 - **Interactive validation**: Bartender swipes down on user's phone to redeem
@@ -423,8 +423,8 @@ const clip = await saveClipToDatabase({ assetId, playbackId, ... });
 
 ## 🎯 Key Business Logic
 
-### T-Index Calculation (Creativity/Quality)
-**Matches PRD § "Controls → parameter mapping"**
+### T-Index Calculation (Intensity/Quality)
+**Updated formula for better chill-to-psychedelic range**
 
 ```typescript
 // Quality [0..1] determines number of diffusion steps (defaults to 0.4)
@@ -433,15 +433,21 @@ quality < 0.50 → [6, 12]          (2 steps)
 quality < 0.75 → [6, 12, 18]      (3 steps)
 quality ≥ 0.75 → [6, 12, 18, 24]  (4 steps, best quality)
 
-// Creativity [1..10] scales the indices (defaults to 5)
-// Higher creativity → lower indices → more stylization
-scale = 2.62 - 0.132 * creativity
+// Intensity [1..10] scales the indices (defaults to 5) - Coffee-themed naming
+// Lower intensity (1) → higher scale (3.25) → higher indices → more refined/chill
+// Higher intensity (10) → lower scale (1.0) → lower indices → more stylized/psychedelic
+scale = 3.5 - 0.25 * intensity
 t_index = base_index * scale (clamped 0-50, rounded)
 
-// Rationale (from PRD):
-// - Higher/later indices bias refinement
-// - Earlier indices increase stylization
-// - Fallback: [4, 12, 20] if any value invalid
+// Examples:
+// Intensity 1 (mild brew): scale=3.25 → [20, 39, 50, 50] (very refined)
+// Intensity 5 (medium): scale=2.25 → [14, 27, 40, 50] (balanced)
+// Intensity 10 (strong): scale=1.0 → [6, 12, 18, 24] (max stylization)
+
+// Rationale:
+// - Higher/later t_index values bias towards refinement and realism
+// - Lower/earlier t_index values increase AI stylization and effects
+// - Wider range (3.5-1.0 vs old 2.62-1.3) provides more dramatic difference
 ```
 
 ### Clip Duration Enforcement
@@ -753,7 +759,7 @@ Avoid:
 - Camera selector (front/back) with permission prompts
 - Live output (1:1 square) with PiP source preview via Livepeer Player SDK v4
 - Manual src construction for Daydream playback IDs
-- Prompt, Texture+Weight, Creativity, Quality controls with debounced updates
+- Prompt, Texture+Weight, Intensity, Quality controls with debounced updates
 - Recording with `captureStream()` + `MediaRecorder` (3-10s duration enforcement)
 - Desktop (click toggle) vs Mobile (press & hold) recording mechanics
 - Real-time recording counter (100ms updates)

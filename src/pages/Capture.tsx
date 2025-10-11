@@ -159,7 +159,7 @@ export default function Capture() {
   const [prompt, setPrompt] = useState('');
   const [selectedTexture, setSelectedTexture] = useState<string | null>(null);
   const [textureWeight, setTextureWeight] = useState([0.5]);
-  const [creativity, setCreativity] = useState([5]);
+  const [intensity, setIntensity] = useState([5]);
   const [quality, setQuality] = useState([0.4]);
 
   const [recording, setRecording] = useState(false);
@@ -470,8 +470,8 @@ export default function Capture() {
     if (!streamId) return;
 
     try {
-      // Calculate t_index_list based on creativity and quality
-      const tIndexList = calculateTIndexList(creativity[0], quality[0]);
+      // Calculate t_index_list based on intensity and quality
+      const tIndexList = calculateTIndexList(intensity[0], quality[0]);
 
       // Determine IP-Adapter settings when a texture is selected
       const selectedTextureObj = selectedTexture
@@ -531,9 +531,9 @@ export default function Capture() {
     } catch (error: unknown) {
       console.error('Error updating prompt:', error);
     }
-  }, [streamId, prompt, creativity, quality, selectedTexture, textureWeight]);
+  }, [streamId, prompt, intensity, quality, selectedTexture, textureWeight]);
 
-  const calculateTIndexList = (creativityVal: number, qualityVal: number): number[] => {
+  const calculateTIndexList = (intensityVal: number, qualityVal: number): number[] => {
     let baseIndices: number[];
 
     if (qualityVal < 0.25) {
@@ -546,7 +546,10 @@ export default function Capture() {
       baseIndices = [6, 12, 18, 24];
     }
 
-    const scale = 2.62 - 0.132 * creativityVal;
+    // New formula: wider range for better chill-to-psychedelic spectrum
+    // Lower intensity (1) → higher scale (3.25) → higher indices → more refined/chill
+    // Higher intensity (10) → lower scale (1.0) → lower indices → more stylized/psychedelic
+    const scale = 3.5 - 0.25 * intensityVal;
     return baseIndices.map(idx => Math.max(0, Math.min(50, Math.round(idx * scale))));
   };
 
@@ -694,7 +697,7 @@ export default function Capture() {
         prompt,
         textureId: selectedTexture,
         textureWeight: selectedTexture ? textureWeight[0] : null,
-        tIndexList: calculateTIndexList(creativity[0], quality[0]),
+        tIndexList: calculateTIndexList(intensity[0], quality[0]),
       });
 
       toast({
@@ -754,7 +757,7 @@ export default function Capture() {
       }, 500);
       return () => clearTimeout(debounce);
     }
-  }, [prompt, selectedTexture, textureWeight, creativity, quality, streamId, updatePrompt]);
+  }, [prompt, selectedTexture, textureWeight, intensity, quality, streamId, updatePrompt]);
 
   // Update recording timer display
   useEffect(() => {
@@ -1164,16 +1167,20 @@ export default function Capture() {
 
           <div>
             <label className="text-sm font-medium mb-2 block text-neutral-300">
-              Creativity: {creativity[0].toFixed(1)}
+              Intensity: {intensity[0].toFixed(1)} {intensity[0] <= 3 ? '☕️ Mild' : intensity[0] <= 6 ? '☕️☕️ Medium' : '☕️☕️☕️ Strong'}
             </label>
             <Slider
-              value={creativity}
-              onValueChange={setCreativity}
+              value={intensity}
+              onValueChange={setIntensity}
               min={1}
               max={10}
               step={0.1}
               className="w-full accent-neutral-400"
             />
+            <div className="flex justify-between text-xs text-neutral-500 mt-1">
+              <span>Chill</span>
+              <span>Psychedelic</span>
+            </div>
           </div>
 
           <div>
