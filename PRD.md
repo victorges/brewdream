@@ -23,7 +23,7 @@ Mobile-first microsite for the **Realtime AI Video Summit (Open Source AI Week)*
     - **Controls (v1 minimal):**
         - **Prompt** (placeholder shows default chosen randomly for front/back based on a list you create for this context; user can overwrite).
         - **Texture** (IP-Adapter single-select, 8 options + “No texture” which is default), **Weight** slider when enabled [0..1]. Clean UI ideally same line
-        - **Creativity** [0..1] and **Quality** [0..1] → drives `t_index_list` (see mapping).
+        - **Intensity** [1..10] and **Quality** [0..1] → drives `t_index_list` (see mapping). Intensity is coffee-themed (1=mild/chill, 10=strong/psychedelic).
 5. **Capture**
     - **Hold-to-record** from **3–10s**. On release, create a **Livepeer clip** (server-side) for that duration ending “now”. Show progress → success.
 6. **Share**
@@ -69,14 +69,29 @@ Mobile-first microsite for the **Realtime AI Video Summit (Open Source AI Week)*
 - **Texture** → IP-Adapter (single):
     - Always have Ipadapters enabled in the params. You will only change the scale which should be 0 when disabled.
     - If a texture is selected, there also a 0-1 scale slider
-- **Creativity / Quality → `t_index_list` (SDXL heuristic)**
-    - `quality ∈ [0..1]` → **count** and **max index**:
-        - low (<.25) → base `[6]`; mid (<.50) → `[6,12]`; high `(.75)`→ `[6,12,18]` ; super high →`[6,12,18,24]`
-        - In between each range, increasing quality should scale the base proportionality until each index becomes the next multiple of 6. [E.g](http://E.gm). .5 should actually use [12,18] base (only >.5 becomes 3 indexes). It scales linearly from the [6,12] at ~.25
-        - Defaults to 0.4
-    - `creativity ∈ [1..10]` scales indices: `scale = 2.62 - 0.132*creativity` (higher creativity → lower indices). Defaults to 5
-    - Final `t_index_list = round(base_i * scale)`, clamped `[0..50]`.
-    - Rationale: higher/later indices bias refinement; earlier indices increase stylization. If any value invalid, fall back to `[4,12,20]`.
+- **Intensity / Quality → `t_index_list` (SDXL diffusion timestep control)**
+    - **Quality** `∈ [0..1]` determines the **number of diffusion steps**:
+        - `quality < 0.25` → 1 step: use first value only
+        - `quality < 0.50` → 2 steps: use first two values
+        - `quality < 0.75` → 3 steps: use first three values
+        - `quality ≥ 0.75` → 4 steps: use all four values (best quality)
+        - Defaults to 0.4 (2 steps)
+    - **Intensity** `∈ [1..10]` controls stylization via **linear interpolation** between target t_index values:
+        - **Low intensity (1)** = Chill/Refined: Target values `[30, 35, 40, 45]`
+        - **High intensity (10)** = Psychedelic/Stylized: Target values `[6, 12, 18, 24]`
+        - **Formula**: For each step `i`, interpolate: `t_index[i] = high_target[i] + (low_target[i] - high_target[i]) * (10 - intensity) / 9`
+        - Defaults to 5 (balanced)
+    - **Final t_index_list**: Round interpolated values, clamp to `[0..50]`, take first `numSteps` based on quality
+    - **Examples**:
+        - Intensity 1, Quality 0.8 (4 steps): `[30, 35, 40, 45]` - very refined, minimal stylization
+        - Intensity 5, Quality 0.8 (4 steps): `[19, 25, 30, 36]` - balanced
+        - Intensity 10, Quality 0.8 (4 steps): `[6, 12, 18, 24]` - maximum stylization
+        - Intensity 1, Quality 0.4 (2 steps): `[30, 35]` - refined with fewer steps
+    - **Rationale**: 
+        - Higher t_index values (later in diffusion) bias toward refinement and realism
+        - Lower t_index values (earlier in diffusion) increase AI stylization and psychedelic effects
+        - Linear interpolation provides smooth, predictable transitions across the intensity range
+        - Quality independently controls computational cost vs visual fidelity
 - **Other**: keep ControlNets enabled with **conditioning_scale** (use 0 to “disable”), never flip `enabled` (avoids reload). (Matches template guidance.). Keep default set to start with, hard coded, but should be easy to change.
 - The created clips should also register the exact params that were used during the recording (both high-level app inputs and generated stream params from them)
 

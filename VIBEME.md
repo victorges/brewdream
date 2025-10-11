@@ -133,7 +133,7 @@ These are **non-negotiable** technical requirements:
    - **Texture**: Optional image overlay (8 presets)
    - **Intensity** (1-10): Controls stylization strength via `t_index_list` (coffee-themed: 1=mild/chill, 10=strong/psychedelic)
    - **Quality** (0-1): Number of diffusion steps (0.25=1 step, 1.0=4 steps)
-   - **t_index_list**: `[6, 12, 18, 24]` scaled by intensity (formula: `3.5 - 0.25 * intensity`)
+   - **t_index_list**: Linear interpolation between `[30, 35, 40, 45]` (intensity=1) and `[6, 12, 18, 24]` (intensity=10)
 
 5. **Clip Recording** (recording.ts + Capture.tsx):
    - **Button behavior**: Desktop (click toggle), Mobile (press & hold)
@@ -424,30 +424,37 @@ const clip = await saveClipToDatabase({ assetId, playbackId, ... });
 ## 🎯 Key Business Logic
 
 ### T-Index Calculation (Intensity/Quality)
-**Updated formula for better chill-to-psychedelic range**
+**Linear interpolation for smooth chill-to-psychedelic spectrum**
 
 ```typescript
 // Quality [0..1] determines number of diffusion steps (defaults to 0.4)
-quality < 0.25 → [6]              (1 step, fastest)
-quality < 0.50 → [6, 12]          (2 steps)
-quality < 0.75 → [6, 12, 18]      (3 steps)
-quality ≥ 0.75 → [6, 12, 18, 24]  (4 steps, best quality)
+quality < 0.25 → 1 step   (use first value only)
+quality < 0.50 → 2 steps  (use first two values)
+quality < 0.75 → 3 steps  (use first three values)
+quality ≥ 0.75 → 4 steps  (use all four values, best quality)
 
-// Intensity [1..10] scales the indices (defaults to 5) - Coffee-themed naming
-// Lower intensity (1) → higher scale (3.25) → higher indices → more refined/chill
-// Higher intensity (10) → lower scale (1.0) → lower indices → more stylized/psychedelic
-scale = 3.5 - 0.25 * intensity
-t_index = base_index * scale (clamped 0-50, rounded)
+// Intensity [1..10] via linear interpolation (defaults to 5) - Coffee-themed naming
+// Target values:
+//   Low intensity (1):   [30, 35, 40, 45] - chill/refined (higher t_index = later diffusion = more realistic)
+//   High intensity (10): [6, 12, 18, 24]  - psychedelic/stylized (lower t_index = earlier diffusion = more effects)
+
+// Formula: For each step i:
+t_index[i] = high_target[i] + (low_target[i] - high_target[i]) * (10 - intensity) / 9
+// Then round, clamp to [0..50], and take first numSteps based on quality
 
 // Examples:
-// Intensity 1 (mild brew): scale=3.25 → [20, 39, 50, 50] (very refined)
-// Intensity 5 (medium): scale=2.25 → [14, 27, 40, 50] (balanced)
-// Intensity 10 (strong): scale=1.0 → [6, 12, 18, 24] (max stylization)
+// Intensity 1, Quality 0.8 (4 steps): [30, 35, 40, 45] - very refined
+// Intensity 3, Quality 0.8 (4 steps): [25, 30, 35, 40] - mostly refined
+// Intensity 5, Quality 0.8 (4 steps): [19, 25, 30, 36] - balanced
+// Intensity 7, Quality 0.8 (4 steps): [14, 20, 25, 31] - stylized
+// Intensity 10, Quality 0.8 (4 steps): [6, 12, 18, 24] - max stylization
+// Intensity 1, Quality 0.4 (2 steps): [30, 35] - refined with fewer steps
 
 // Rationale:
-// - Higher/later t_index values bias towards refinement and realism
-// - Lower/earlier t_index values increase AI stylization and effects
-// - Wider range (3.5-1.0 vs old 2.62-1.3) provides more dramatic difference
+// - Higher t_index values (later in diffusion timeline) bias toward refinement and realism
+// - Lower t_index values (earlier in diffusion) increase AI stylization and psychedelic effects
+// - Linear interpolation provides smooth, predictable transitions
+// - Quality independently controls computation cost vs visual fidelity
 ```
 
 ### Clip Duration Enforcement

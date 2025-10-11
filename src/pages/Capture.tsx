@@ -534,23 +534,33 @@ export default function Capture() {
   }, [streamId, prompt, intensity, quality, selectedTexture, textureWeight]);
 
   const calculateTIndexList = (intensityVal: number, qualityVal: number): number[] => {
-    let baseIndices: number[];
+    // Target t_index values for extreme intensities (at full quality)
+    const lowIntensityTarget = [30, 35, 40, 45];  // intensity=1 (chill/refined)
+    const highIntensityTarget = [6, 12, 18, 24];  // intensity=10 (psychedelic/stylized)
 
+    // Determine number of diffusion steps based on quality
+    let numSteps: number;
     if (qualityVal < 0.25) {
-      baseIndices = [6];
+      numSteps = 1;
     } else if (qualityVal < 0.50) {
-      baseIndices = [6, 12];
+      numSteps = 2;
     } else if (qualityVal < 0.75) {
-      baseIndices = [6, 12, 18];
+      numSteps = 3;
     } else {
-      baseIndices = [6, 12, 18, 24];
+      numSteps = 4;
     }
 
-    // New formula: wider range for better chill-to-psychedelic spectrum
-    // Lower intensity (1) → higher scale (3.25) → higher indices → more refined/chill
-    // Higher intensity (10) → lower scale (1.0) → lower indices → more stylized/psychedelic
-    const scale = 3.5 - 0.25 * intensityVal;
-    return baseIndices.map(idx => Math.max(0, Math.min(50, Math.round(idx * scale))));
+    // Linear interpolation between low and high intensity targets
+    // intensity=1 uses lowIntensityTarget, intensity=10 uses highIntensityTarget
+    const result: number[] = [];
+    for (let i = 0; i < numSteps; i++) {
+      const value = highIntensityTarget[i] + 
+                    (lowIntensityTarget[i] - highIntensityTarget[i]) * 
+                    (10 - intensityVal) / 9;
+      result.push(Math.max(0, Math.min(50, Math.round(value))));
+    }
+
+    return result;
   };
 
   const startRecording = async () => {
