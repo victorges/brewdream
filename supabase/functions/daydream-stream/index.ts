@@ -16,21 +16,15 @@ async function initializeStreamParams(streamId: string, params: any, apiKey: str
 
       console.log(`[EDGE] Attempt ${attempt + 1}: Sending params to Daydream:`, JSON.stringify(params, null, 2));
       
-      // IMPORTANT: Use the correct endpoint /beta/streams/:id/prompts (not /v1/streams/:id)
-      // The body format must be: { pipeline: "live-video-to-video", model_id: "streamdiffusion", params: {...} }
-      const requestBody = {
-        pipeline: "live-video-to-video",
-        model_id: "streamdiffusion",
-        params: params
-      };
-      
-      const response = await fetch(`https://api.daydream.live/beta/streams/${streamId}/prompts`, {
-        method: 'POST',
+      // PATCH /v1/streams/:id is the correct, new API
+      // Body format: { params: { ... } }
+      const response = await fetch(`https://api.daydream.live/v1/streams/${streamId}`, {
+        method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({ params }),
       });
 
       const data = await response.json();
