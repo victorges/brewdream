@@ -594,27 +594,28 @@ export default function Capture() {
 
       // CRITICAL: Always include controlnets for consistency and accuracy
       // Higher conditioning scales reduce flicker and improve structural consistency
+      // Keep controlnets enabled even with textures for maximum stability
       params.controlnets = [
         {
           enabled: true,
           model_id: 'xinsir/controlnet-depth-sdxl-1.0',
           preprocessor: 'depth_tensorrt',
           preprocessor_params: {},
-          conditioning_scale: selectedTextureObj ? 0 : 0.6, // Increased from 0.3 for stronger depth guidance
+          conditioning_scale: 0.6, // Always enabled for structural consistency
         },
         {
           enabled: true,
           model_id: 'xinsir/controlnet-canny-sdxl-1.0',
           preprocessor: 'canny',
           preprocessor_params: {},
-          conditioning_scale: 0.3, // Enabled (was 0) for edge preservation
+          conditioning_scale: 0.3, // Always enabled for edge preservation
         },
         {
           enabled: true,
           model_id: 'xinsir/controlnet-tile-sdxl-1.0',
           preprocessor: 'feedback',
           preprocessor_params: {},
-          conditioning_scale: 0.2, // Enabled (was 0) for temporal consistency
+          conditioning_scale: 0.2, // Always enabled for temporal consistency
         },
       ];
 
