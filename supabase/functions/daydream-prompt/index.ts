@@ -43,8 +43,13 @@ serve(async (req) => {
 
     if (!response.ok) {
       console.error('[EDGE] Daydream API error:', JSON.stringify(data, null, 2));
-      return new Response(JSON.stringify({ error: data }), {
-        status: response.status,
+      // Pass through the full Daydream error response to frontend
+      return new Response(JSON.stringify({ 
+        error: 'Daydream API Error',
+        daydreamError: data,
+        status: response.status 
+      }), {
+        status: 400, // Use 400 instead of passing through 404, so frontend sees it as error not "not found"
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

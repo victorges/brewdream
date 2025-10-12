@@ -6,12 +6,12 @@ const corsHeaders = {
 };
 
 // Helper to wait for stream to be ready and update params
-async function initializeStreamParams(streamId: string, params: any, apiKey: string, maxRetries = 10) {
+async function initializeStreamParams(streamId: string, params: any, apiKey: string, maxRetries = 20) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      // Wait 1 second before each attempt (except first)
+      // Wait 2 seconds before each attempt to give stream more time to initialize
       if (attempt > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 2000));
       }
 
       console.log(`[EDGE] Attempt ${attempt + 1}: Sending params to Daydream:`, JSON.stringify(params, null, 2));
