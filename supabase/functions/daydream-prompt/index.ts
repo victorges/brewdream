@@ -10,7 +10,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('[EDGE] daydream-prompt function called (version: 2025-10-11-debug)');
+  console.log('[EDGE] daydream-prompt function called (version: 2025-10-12-fixed-endpoint)');
 
   try {
     const DAYDREAM_API_KEY = Deno.env.get('DAYDREAM_API_KEY');
@@ -26,15 +26,25 @@ serve(async (req) => {
     console.log('[EDGE] Updating prompt for stream:', streamId);
     console.log('[EDGE] Params being sent:', JSON.stringify(promptBody, null, 2));
 
-    // Send the params body as-is to the PATCH endpoint
-    // The body should be in format: { params: { ... } }
-    const response = await fetch(`https://api.daydream.live/v1/streams/${streamId}`, {
-      method: 'PATCH',
+    // IMPORTANT: The update endpoint is /beta/streams/:id/prompts (not /v1/streams/:id)
+    // The body should be in format: { pipeline: "live-video-to-video", model_id: "streamdiffusion", params: { ... } }
+    // Extract params from promptBody and construct the correct request format
+    const params = promptBody.params || promptBody;
+    const requestBody = {
+      pipeline: "live-video-to-video",
+      model_id: "streamdiffusion",
+      params: params
+    };
+    
+    console.log('[EDGE] Request body:', JSON.stringify(requestBody, null, 2));
+
+    const response = await fetch(`https://api.daydream.live/beta/streams/${streamId}/prompts`, {
+      method: 'POST',
       headers: {
         'Authorization': `Bearer ${DAYDREAM_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(promptBody),
+      body: JSON.stringify(requestBody),
     });
 
     const data = await response.json();

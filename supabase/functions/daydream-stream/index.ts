@@ -16,13 +16,21 @@ async function initializeStreamParams(streamId: string, params: any, apiKey: str
 
       console.log(`[EDGE] Attempt ${attempt + 1}: Sending params to Daydream:`, JSON.stringify(params, null, 2));
       
-      const response = await fetch(`https://api.daydream.live/v1/streams/${streamId}`, {
-        method: 'PATCH',
+      // IMPORTANT: Use the correct endpoint /beta/streams/:id/prompts (not /v1/streams/:id)
+      // The body format must be: { pipeline: "live-video-to-video", model_id: "streamdiffusion", params: {...} }
+      const requestBody = {
+        pipeline: "live-video-to-video",
+        model_id: "streamdiffusion",
+        params: params
+      };
+      
+      const response = await fetch(`https://api.daydream.live/beta/streams/${streamId}/prompts`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ params }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -57,7 +65,7 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('[EDGE] daydream-stream function called (version: 2025-10-11-debug)');
+  console.log('[EDGE] daydream-stream function called (version: 2025-10-12-fixed-endpoint)');
 
   try {
     const DAYDREAM_API_KEY = Deno.env.get('DAYDREAM_API_KEY');
