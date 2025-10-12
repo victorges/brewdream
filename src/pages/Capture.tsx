@@ -261,28 +261,28 @@ export default function Capture() {
         t_index_list: initialTIndexList,
         seed: 42,
         num_inference_steps: 50,
-        // Specify controlnets with disabled state
+        // Specify controlnets for consistency and accuracy
         controlnets: [
           {
             enabled: true,
             model_id: 'xinsir/controlnet-depth-sdxl-1.0',
             preprocessor: 'depth_tensorrt',
             preprocessor_params: {},
-            conditioning_scale: 0.3,
+            conditioning_scale: 0.6, // Increased from 0.3 for stronger structural consistency
           },
           {
             enabled: true,
             model_id: 'xinsir/controlnet-canny-sdxl-1.0',
             preprocessor: 'canny',
             preprocessor_params: {},
-            conditioning_scale: 0,
+            conditioning_scale: 0.3, // Enabled (was 0) for better edge preservation
           },
           {
             enabled: true,
             model_id: 'xinsir/controlnet-tile-sdxl-1.0',
             preprocessor: 'feedback',
             preprocessor_params: {},
-            conditioning_scale: 0,
+            conditioning_scale: 0.2, // Enabled (was 0) for temporal consistency
           },
         ],
         // IP-Adapter disabled by default
@@ -592,29 +592,29 @@ export default function Capture() {
         num_inference_steps: 50,
       };
 
-      // CRITICAL: Always include controlnets - depth with proper conditioning scale
-      // This is required for consistent stream behavior
+      // CRITICAL: Always include controlnets for consistency and accuracy
+      // Higher conditioning scales reduce flicker and improve structural consistency
       params.controlnets = [
         {
           enabled: true,
           model_id: 'xinsir/controlnet-depth-sdxl-1.0',
           preprocessor: 'depth_tensorrt',
           preprocessor_params: {},
-          conditioning_scale: selectedTextureObj ? 0 : 0.3, // Disable depth when using texture
+          conditioning_scale: selectedTextureObj ? 0 : 0.6, // Increased from 0.3 for stronger depth guidance
         },
         {
           enabled: true,
           model_id: 'xinsir/controlnet-canny-sdxl-1.0',
           preprocessor: 'canny',
           preprocessor_params: {},
-          conditioning_scale: 0,
+          conditioning_scale: 0.3, // Enabled (was 0) for edge preservation
         },
         {
           enabled: true,
           model_id: 'xinsir/controlnet-tile-sdxl-1.0',
           preprocessor: 'feedback',
           preprocessor_params: {},
-          conditioning_scale: 0,
+          conditioning_scale: 0.2, // Enabled (was 0) for temporal consistency
         },
       ];
 
