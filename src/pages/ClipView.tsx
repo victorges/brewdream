@@ -282,6 +282,8 @@ export default function ClipView() {
     );
   }
 
+  console.log('clip.asset_playback_id', clip?.asset_playback_id);
+
   return (
     <div className="min-h-screen">
       <Header isAuthenticated={isAuthenticated} />
@@ -305,16 +307,13 @@ export default function ClipView() {
               transition={{ duration: 0.4 }}
             >
               <div className="relative aspect-[9/16] max-h-[80vh] w-full bg-black">
-                <video
-                  src={`https://lvpr.tv/?v=${clip.asset_playback_id}`}
-                  poster={`https://lvpr.tv/?v=${clip.asset_playback_id}`}
-                  controls
-                  className="h-full w-full object-contain"
-                  autoPlay
-                  loop
-                >
-                  Your browser does not support the video tag.
-                </video>
+                <iframe
+                  src={`https://lvpr.tv/?v=${clip.asset_playback_id}&autoplay=1&loop=1`}
+                  className="w-full h-full border-0"
+                  allow="autoplay; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                  title="Clip playback"
+                />
               </div>
             </motion.div>
 
