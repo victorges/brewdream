@@ -20,7 +20,6 @@ interface ClipCardProps {
 
 export function ClipCard({ clip }: ClipCardProps) {
   const [viewCount, setViewCount] = useState<number | null>(null);
-  const [isHovered, setIsHovered] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const hasLoadedViews = useRef(false);
   const isMobile = useIsMobile();
@@ -78,15 +77,13 @@ export function ClipCard({ clip }: ClipCardProps) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       className="group relative overflow-hidden rounded-2xl bg-card hover:shadow-lg hover:shadow-[0_0_15px_2px_theme(colors.neutral.700/0.4)] transition-all duration-300 hover:border-neutral-800 border border-neutral-900"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <Link to={`/clip/${clip.id}`} className="block">
         {/* Video */}
         <div className={`relative overflow-hidden ${isMobile ? 'aspect-[9/16]' : 'aspect-square'}`}>
           <video
             src={videoUrl}
-            autoPlay={isHovered}
+            autoPlay
             loop
             muted
             playsInline
