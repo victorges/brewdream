@@ -15,8 +15,9 @@ import {
 } from "@/components/ui/popover";
 import * as Player from '@livepeer/react/player';
 import { getSrc } from '@livepeer/react/external';
-import { createDaydreamStream, startWhipPublish, updateDaydreamPrompts } from '@/lib/daydream';
 import type { StreamDiffusionParams } from '@/lib/daydream';
+import { DaydreamCanvas } from '@/components/DaydreamCanvas';
+import type { DaydreamCanvasHandle } from '@/components/DaydreamCanvas';
 import { VideoRecorder, uploadToLivepeer, saveClipToDatabase } from '@/lib/recording';
 
 const FRONT_PROMPTS = [
@@ -154,9 +155,7 @@ export default function Capture() {
   const [loading, setLoading] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [playbackId, setPlaybackId] = useState<string | null>(null);
-  const [whipUrl, setWhipUrl] = useState<string | null>(null);
   const [autoStartChecked, setAutoStartChecked] = useState(false);
-  const [streamInitialized, setStreamInitialized] = useState(false);
 
   const [prompt, setPrompt] = useState('');
   const [selectedTexture, setSelectedTexture] = useState<string | null>(null);
@@ -177,18 +176,17 @@ export default function Capture() {
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
+  const daydreamRef = useRef<DaydreamCanvasHandle | null>(null);
   const sourceVideoRef = useRef<HTMLVideoElement>(null);
-  const pcRef = useRef<RTCPeerConnection | null>(null);
   const recorderRef = useRef<VideoRecorder | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recordStartTimeRef = useRef<number | null>(null);
   const originalStreamRef = useRef<MediaStream | null>(null);
-  const silentAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const realAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const tabHiddenTimeRef = useRef<number | null>(null);
   const wasStreamActiveRef = useRef<boolean>(false);
+  const [videoSource, setVideoSource] = useState<MediaStream | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
