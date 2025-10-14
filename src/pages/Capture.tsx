@@ -696,9 +696,7 @@ export default function Capture() {
         // Clear the playback and stream state to show loading when they return
         setPlaybackId(null);
         setStreamId(null);
-        setWhipUrl(null);
         setIsPlaying(false);
-        setStreamInitialized(false);
       } else {
         // User returned to the tab
         if (tabHiddenTimeRef.current && wasStreamActiveRef.current) {
@@ -902,9 +900,7 @@ export default function Capture() {
                     });
                   }
                 }}
-                onStatus={(s) => {
-                  if (s === 'ready') setIsPlaying(true);
-                }}
+                // Rely on onReady + player events; no onStatus needed
                 onError={(e) => {
                   console.error('DaydreamCanvas error', e);
                   setLoading(false);
@@ -937,14 +933,22 @@ export default function Capture() {
             </Button>
           </div>
 
-          {/* PiP Source Preview */}
+          {/* PiP Source Preview: render the DaydreamCanvas itself as PiP overlay */}
           <div className="absolute bottom-3 right-3 w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-lg">
-            <video
-              ref={sourceVideoRef}
-              autoPlay
-              playsInline
-              muted
+            <DaydreamCanvas
+              // A lightweight preview instance that mirrors the current camera settings
+              // It will auto-start and draw from the built-in camera; it does not create a Daydream stream.
+              // To avoid duplicate streaming, we keep this purely visual by not providing params/onReady.
+              // Instead, we mirror the local camera with useCamera and no audio.
+              size={80}
+              fps={24}
               className="w-full h-full object-cover"
+              useCamera
+              cameraFacingMode={cameraType === 'front' ? 'user' : 'environment'}
+              mirrorFront
+              // Provide inert params to satisfy prop types, but avoid triggering Daydream API by not passing onReady
+              params={{ model_id: 'stabilityai/sdxl-turbo', prompt: '' }}
+              onError={() => {}}
             />
           </div>
         </div>

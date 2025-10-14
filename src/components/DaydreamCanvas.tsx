@@ -14,14 +14,6 @@ import {
 } from '@/lib/daydream';
 import type { StreamDiffusionParams } from '@/lib/daydream';
 
-export type PublisherStatus =
-  | 'idle'
-  | 'creating_stream'
-  | 'publishing'
-  | 'ready'
-  | 'stopped'
-  | 'error';
-
 export interface DaydreamCanvasHandle {
   start: () => Promise<void>;
   stop: () => Promise<void>;
@@ -54,7 +46,6 @@ export interface DaydreamCanvasProps {
   fps?: number; // capture and render FPS (default 24)
   // Events
   onReady?: (info: { streamId: string; playbackId: string }) => void;
-  onStatus?: (status: PublisherStatus) => void;
   onError?: (error: unknown) => void;
 }
 
@@ -128,14 +119,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
     const playbackIdRef = useRef<string | null>(null);
     const readyForParamUpdatesRef = useRef<boolean>(false);
 
-    const statusRef = useRef<PublisherStatus>('idle');
-    const setStatus = useCallback(
-      (s: PublisherStatus) => {
-        statusRef.current = s;
-        onStatus?.(s);
-      },
-      [onStatus]
-    );
+    // Internal status tracking (no external API)
 
     // Render loop control (for copying from video/canvas sources)
     const rafIdRef = useRef<number | null>(null);
