@@ -33,7 +33,6 @@ export interface DaydreamCanvasProps {
   useCamera?: boolean; // default false
   cameraFacingMode?: 'user' | 'environment'; // when useCamera, default 'user'
   mirrorFront?: boolean; // mirror draw for front camera, default true
-  onLocalStream?: (stream: MediaStream) => void; // receive the locally captured camera stream
   // Audio source (optional). If omitted, a silent track will be attempted.
   audioSource?: MediaStream | MediaStreamTrack | null;
   // Built-in microphone capture (optional)
@@ -45,6 +44,7 @@ export interface DaydreamCanvasProps {
   enforceSquare?: boolean; // set canvas to size x size (default true)
   className?: string;
   style?: React.CSSProperties;
+  canvasRef?: React.Ref<HTMLCanvasElement>; // optional ref to the canvas element
   // Lifecycle & behavior
   autoStart?: boolean; // start on mount (default true)
   alwaysOn?: boolean; // keep alive in background (default false)
@@ -96,7 +96,6 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       useCamera = false,
       cameraFacingMode = 'user',
       mirrorFront = true,
-      onLocalStream,
       audioSource = null,
       useMicrophone = false,
       microphoneConstraints,
@@ -105,6 +104,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       enforceSquare = true,
       className,
       style,
+      canvasRef: externalCanvasRef,
       autoStart = true,
       alwaysOn = false,
       fps = 24,
@@ -211,7 +211,6 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
             return;
           }
           ownedCameraStreamRef.current = stream;
-          onLocalStream?.(stream);
         } catch (e) {
           onError?.(e);
         }
@@ -223,7 +222,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
           ownedCameraStreamRef.current = null;
         }
       };
-    }, [useCamera, cameraFacingMode, onError, onLocalStream, size]);
+    }, [useCamera, cameraFacingMode, onError, size]);
 
     // Start/stop render-copy loop based on sources
     const startCopyLoop = useCallback(() => {
@@ -787,9 +786,21 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Merge internal and external refs
+    const setCanvasRef = useCallback((element: HTMLCanvasElement | null) => {
+      canvasRef.current = element;
+      if (externalCanvasRef) {
+        if (typeof externalCanvasRef === 'function') {
+          externalCanvasRef(element);
+        } else {
+          (externalCanvasRef as React.MutableRefObject<HTMLCanvasElement | null>).current = element;
+        }
+      }
+    }, [externalCanvasRef]);
+
     return (
       <canvas
-        ref={canvasRef}
+        ref={setCanvasRef}
         className={className}
         style={{ width: size, height: size, ...style }}
         width={enforceSquare ? size : undefined}

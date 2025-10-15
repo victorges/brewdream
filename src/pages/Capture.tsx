@@ -177,16 +177,13 @@ export default function Capture() {
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
 
   const daydreamRef = useRef<DaydreamCanvasHandle | null>(null);
-  const sourceVideoRef = useRef<HTMLVideoElement>(null);
   const recorderRef = useRef<VideoRecorder | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recordStartTimeRef = useRef<number | null>(null);
-  const originalStreamRef = useRef<MediaStream | null>(null);
   const realAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const tabHiddenTimeRef = useRef<number | null>(null);
   const wasStreamActiveRef = useRef<boolean>(false);
-  const [videoSource, setVideoSource] = useState<MediaStream | null>(null);
 
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -209,26 +206,10 @@ export default function Capture() {
   const stopAllMediaStreams = useCallback(() => {
     console.log('Stopping all media streams...');
 
-    // Stop all tracks in the original stream
-    if (originalStreamRef.current) {
-      originalStreamRef.current.getTracks().forEach(track => {
-        track.stop();
-        console.log('Stopped track:', track.kind, track.id);
-      });
-      originalStreamRef.current = null;
-    }
-
     // Stop audio track we own (if any)
     if (realAudioTrackRef.current) {
       try { realAudioTrackRef.current.stop(); } catch (e) { /* Track may already be stopped */ }
       realAudioTrackRef.current = null;
-    }
-
-    // Stop the PiP video
-    if (sourceVideoRef.current && sourceVideoRef.current.srcObject) {
-      const stream = sourceVideoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
-      sourceVideoRef.current.srcObject = null;
     }
 
     console.log('All media streams stopped');
@@ -866,50 +847,49 @@ export default function Capture() {
             </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              {/* DaydreamCanvas handles stream creation and WHIP publish */}
-              <DaydreamCanvas
-                ref={daydreamRef}
-                size={512}
-                fps={24}
-                className="w-full h-full object-cover"
-                useCamera
-                cameraFacingMode={cameraType === 'front' ? 'user' : 'environment'}
-                mirrorFront
-                onLocalStream={(s) => {
-                  originalStreamRef.current = s;
-                  // Show PiP preview of source
-                  if (sourceVideoRef.current) sourceVideoRef.current.srcObject = s;
-                }}
-                params={canvasParams}
-                onReady={async ({ streamId: sid, playbackId: pid }) => {
-                  setStreamId(sid);
-                  setPlaybackId(pid);
-                  setLoading(false);
-                  // Ensure session exists
-                  const { data: { user } } = await supabase.auth.getUser();
-                  if (!user) return;
-                  const { data: userData } = await supabase
-                    .from('users')
-                    .select('id')
-                    .eq('id', user.id)
-                    .single();
-                  if (userData) {
-                    await supabase.from('sessions').insert({
-                      user_id: userData.id,
-                      stream_id: sid,
-                      playback_id: pid,
-                      camera_type: cameraType!,
-                    });
-                  }
-                }}
-                // Rely on onReady + player events; no onStatus needed
-                onError={(e) => {
-                  console.error('DaydreamCanvas error', e);
-                  setLoading(false);
-                }}
-              />
+              <Loader2 className="w-12 h-12 animate-spin text-neutral-400" />
             </div>
           )}
+
+          {/* DaydreamCanvas: camera input preview (PiP in bottom-right) */}
+          <div className="absolute bottom-3 right-3 w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-lg">
+            <DaydreamCanvas
+              ref={daydreamRef}
+              size={512}
+              fps={24}
+              className="w-full h-full object-cover"
+              useCamera
+              cameraFacingMode={cameraType === 'front' ? 'user' : 'environment'}
+              mirrorFront
+              params={canvasParams}
+              onReady={async ({ streamId: sid, playbackId: pid }) => {
+                setStreamId(sid);
+                setPlaybackId(pid);
+                setLoading(false);
+                // Ensure session exists
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+                const { data: userData } = await supabase
+                  .from('users')
+                  .select('id')
+                  .eq('id', user.id)
+                  .single();
+                if (userData) {
+                  await supabase.from('sessions').insert({
+                    user_id: userData.id,
+                    stream_id: sid,
+                    playback_id: pid,
+                    camera_type: cameraType!,
+                  });
+                }
+              }}
+              // Rely on onReady + player events; no onStatus needed
+              onError={(e) => {
+                console.error('DaydreamCanvas error', e);
+                setLoading(false);
+              }}
+            />
+          </div>
 
           {/* Microphone Toggle Button */}
           <div className="absolute bottom-3 left-3">
@@ -933,17 +913,6 @@ export default function Capture() {
                 <MicOff className="w-5 h-5" />
               )}
             </Button>
-          </div>
-
-          {/* PiP Source Preview: simple local camera preview (does not start another stream) */}
-          <div className="absolute bottom-3 right-3 w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-lg">
-            <video
-              ref={sourceVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
           </div>
         </div>
       </div>
