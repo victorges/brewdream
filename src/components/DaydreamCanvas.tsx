@@ -346,7 +346,15 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
                   if (needMirror) {
                     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
                   }
+                } else {
+                  // Video source not ready yet - maintain black background
+                  ctx.fillStyle = '#000000';
+                  ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
                 }
+              } else {
+                // No video source available - maintain black background
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
               }
             }
           }
@@ -711,10 +719,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
         setIsStarted(true);
         // creating_stream
 
-        // Kick off copy loop if we have any video source (external or internal camera)
-        if (videoSource || useCamera) startCopyLoop();
-
-        // Create stream with initial params
+        // Create stream with initial params FIRST
         const initialParams: StreamDiffusionParams = {
           model_id: params.model_id || 'stabilityai/sdxl-turbo',
           prompt: params.prompt,
@@ -765,11 +770,14 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
         playbackIdRef.current = streamData.output_playback_id;
         onReady?.({ streamId: streamData.id, playbackId: streamData.output_playback_id });
 
-        // Immediately start WHIP publish
+        // Start WHIP publishing IMMEDIATELY - send whatever frames are available
         const publishStream = await buildPublishStream();
         const pc = await startWhipPublish(streamData.whip_url, publishStream);
         pcRef.current = pc;
         // ready
+
+        // NOW start the copy loop to populate the canvas with actual content
+        if (videoSource || useCamera) startCopyLoop();
 
         // Open the init window for params updates (3s gate)
         readyForParamUpdatesRef.current = false;
