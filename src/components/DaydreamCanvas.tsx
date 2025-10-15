@@ -13,6 +13,10 @@ import {
 import type { StreamDiffusionParams } from '@/lib/daydream';
 
 export interface DaydreamCanvasProps {
+  className?: string;
+  style?: React.CSSProperties;
+  canvasRef?: React.Ref<HTMLCanvasElement>; // optional ref to the canvas element
+
   params: StreamDiffusionParams;
   // Video frame source
   videoSource:
@@ -46,9 +50,6 @@ export interface DaydreamCanvasProps {
   size?: number; // square target, default 512
   cover?: boolean; // crop-to-fill when copying from non-square source (default true)
   enforceSquare?: boolean; // set canvas to size x size (default true)
-  className?: string;
-  style?: React.CSSProperties;
-  canvasRef?: React.Ref<HTMLCanvasElement>; // optional ref to the canvas element
   // Lifecycle & behavior
   alwaysOn?: boolean; // keep alive in background on mobile (default false)
   // Events
