@@ -19,6 +19,8 @@ export interface DaydreamCanvasHandle {
   stop: () => Promise<void>;
   pushFrame: (source: CanvasImageSource) => void;
   replaceAudioSource: (audio: MediaStream | MediaStreamTrack | null) => Promise<void>;
+  requestMicrophone: () => Promise<boolean>;
+  setMicrophoneEnabled: (enabled: boolean) => void;
   getStreamInfo: () => { streamId: string | null; playbackId: string | null };
 }
 
@@ -34,6 +36,9 @@ export interface DaydreamCanvasProps {
   onLocalStream?: (stream: MediaStream) => void; // receive the locally captured camera stream
   // Audio source (optional). If omitted, a silent track will be attempted.
   audioSource?: MediaStream | MediaStreamTrack | null;
+  // Built-in microphone capture (optional)
+  useMicrophone?: boolean; // default false
+  microphoneConstraints?: MediaTrackConstraints;
   // Canvas/display
   size?: number; // square target, default 512
   cover?: boolean; // crop-to-fill when copying from non-square source (default true)
@@ -89,6 +94,8 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       videoSource,
       sourceCanvas,
       audioSource = null,
+      useMicrophone = false,
+      microphoneConstraints,
       size = 512,
       cover = true,
       enforceSquare = true,
@@ -98,7 +105,6 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       alwaysOn = false,
       fps = 24,
       onReady,
-      onStatus,
       onError,
     },
     ref
@@ -112,6 +118,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const publishStreamRef = useRef<MediaStream | null>(null);
     const currentAudioTrackRef = useRef<MediaStreamTrack | null>(null);
+    const builtInMicTrackRef = useRef<MediaStreamTrack | null>(null);
     const silentAudioTrackRef = useRef<MediaStreamTrack | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -329,6 +336,44 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       }
     }, []);
 
+    // Request built-in microphone on demand
+    const requestMicrophone = useCallback(async (): Promise<boolean> => {
+      try {
+        if (!useMicrophone) return false;
+        const constraints: MediaStreamConstraints = {
+          audio: microphoneConstraints || { echoCancellation: true, noiseSuppression: true },
+          video: false,
+        };
+        const micStream = await navigator.mediaDevices.getUserMedia(constraints);
+        const micTrack = micStream.getAudioTracks()[0];
+        if (!micTrack) return false;
+        builtInMicTrackRef.current = micTrack;
+        if (publishStreamRef.current) {
+          publishStreamRef.current.getAudioTracks().forEach((t) => publishStreamRef.current!.removeTrack(t));
+          publishStreamRef.current.addTrack(micTrack);
+        }
+        if (pcRef.current) {
+          const sender = pcRef.current.getSenders().find((s) => s.track?.kind === 'audio');
+          if (sender) await sender.replaceTrack(micTrack);
+        }
+        if (silentAudioTrackRef.current) {
+          try { silentAudioTrackRef.current.stop(); } catch {}
+          silentAudioTrackRef.current = null;
+        }
+        currentAudioTrackRef.current = micTrack;
+        return true;
+      } catch (e) {
+        onError?.(e);
+        return false;
+      }
+    }, [microphoneConstraints, onError, useMicrophone]);
+
+    const setMicrophoneEnabled = useCallback((enabled: boolean) => {
+      if (currentAudioTrackRef.current && currentAudioTrackRef.current.kind === 'audio') {
+        currentAudioTrackRef.current.enabled = enabled;
+      }
+    }, []);
+
     // Build the publishing MediaStream (canvas video + audio)
     const buildPublishStream = useCallback(async (): Promise<MediaStream> => {
       if (!canvasRef.current) throw new Error('Canvas not ready');
@@ -345,6 +390,12 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
         audioTrack = audioSource.getAudioTracks()[0] || null;
       } else if (audioSource && 'kind' in audioSource) {
         audioTrack = audioSource.kind === 'audio' ? audioSource : null;
+      }
+
+      if (!audioTrack) {
+        if (builtInMicTrackRef.current) {
+          audioTrack = builtInMicTrackRef.current;
+        }
       }
 
       if (!audioTrack) {
@@ -425,6 +476,33 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       paramsInFlightRef.current = true;
       // Snapshot latest for eventual consistency; always include required defaults
       const latest = latestParamsRef.current || next;
+      // Ensure controlnets are always sent (use provided or defaults)
+      const defaultControlnets = [
+        {
+          enabled: true,
+          model_id: 'xinsir/controlnet-depth-sdxl-1.0',
+          preprocessor: 'depth_tensorrt',
+          preprocessor_params: {},
+          conditioning_scale: 0.6,
+        },
+        {
+          enabled: true,
+          model_id: 'xinsir/controlnet-canny-sdxl-1.0',
+          preprocessor: 'canny',
+          preprocessor_params: {},
+          conditioning_scale: 0.3,
+        },
+        {
+          enabled: true,
+          model_id: 'xinsir/controlnet-tile-sdxl-1.0',
+          preprocessor: 'feedback',
+          preprocessor_params: {},
+          conditioning_scale: 0.2,
+        },
+      ];
+      const mergedControlnets = (latest.controlnets && latest.controlnets.length ? latest.controlnets : defaultControlnets)
+        .map((cn) => ({ enabled: true, preprocessor_params: {}, ...cn }));
+
       const body = {
         streamId,
         params: {
@@ -434,8 +512,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
           num_inference_steps: latest.num_inference_steps ?? 50,
           seed: latest.seed ?? 42,
           t_index_list: latest.t_index_list ?? [6, 12, 18],
-          // Default to empty controlnets list (user can supply)
-          controlnets: latest.controlnets ?? [],
+          controlnets: mergedControlnets,
           // Always include ip_adapter (disabled by default)
           ip_adapter: latest.ip_adapter ?? {
             enabled: false,
@@ -482,7 +559,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
     const start = useCallback(async () => {
       if (pcRef.current) return; // already running
       try {
-        setStatus('creating_stream');
+        // creating_stream
 
         // Optional: kick off copy loop if we have a source; users can also pushFrame manually
         if (videoSource || sourceCanvas) startCopyLoop();
@@ -514,11 +591,10 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
         onReady?.({ streamId: streamData.id, playbackId: streamData.output_playback_id });
 
         // Immediately start WHIP publish
-        setStatus('publishing');
         const publishStream = await buildPublishStream();
         const pc = await startWhipPublish(streamData.whip_url, publishStream);
         pcRef.current = pc;
-        setStatus('ready');
+        // ready
 
         // Open the init window for params updates (3s gate)
         readyForParamUpdatesRef.current = false;
@@ -528,7 +604,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
           enqueueParamsUpdate();
         }, 3000);
       } catch (e) {
-        setStatus('error');
+        // error
         onError?.(e);
         throw e;
       }
@@ -578,7 +654,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       streamIdRef.current = null;
       playbackIdRef.current = null;
 
-      setStatus('stopped');
+      // stopped
     }, [setStatus, stopCopyLoop]);
 
     // Expose imperative API
@@ -624,12 +700,14 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
           }
         },
         replaceAudioSource,
+        requestMicrophone,
+        setMicrophoneEnabled,
         getStreamInfo: () => ({
           streamId: streamIdRef.current,
           playbackId: playbackIdRef.current,
         }),
       }),
-      [cover, enforceSquare, replaceAudioSource, size, start, stop]
+      [cover, enforceSquare, replaceAudioSource, requestMicrophone, setMicrophoneEnabled, size, start, stop]
     );
 
     // Background auto-stop/start (mobile default)
