@@ -303,8 +303,6 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
             const ctx = canvasRef.current.getContext('2d', { alpha: false });
             if (ctx) {
               const sizePx = enforceSquare ? size : Math.min(size, Math.max(canvasRef.current.width, canvasRef.current.height));
-              ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-              let drew = false;
 
               // Draw from source canvas (type: 'canvas')
               if (videoSource.type === 'canvas') {
@@ -312,13 +310,15 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
                 const srcW = sourceCanvas.width;
                 const srcH = sourceCanvas.height;
                 if (srcW > 0 && srcH > 0) {
+                  // Clear before drawing
+                  ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
                   if (cover) {
                     const { dx, dy, drawWidth, drawHeight } = computeCoverDrawRect(srcW, srcH, sizePx);
                     ctx.drawImage(sourceCanvas, dx, dy, drawWidth, drawHeight);
                   } else {
                     ctx.drawImage(sourceCanvas, 0, 0, sizePx, sizePx);
                   }
-                  drew = true;
                 }
               }
               // Draw from hidden video element (types: 'stream' or 'camera')
@@ -327,6 +327,9 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
                 const srcW = v.videoWidth;
                 const srcH = v.videoHeight;
                 if (srcW > 0 && srcH > 0) {
+                  // Clear before drawing
+                  ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+
                   // Mirror for front camera
                   const needMirror = mirrorFront && cameraFacingMode === 'front' && videoSource.type === 'camera';
                   if (needMirror) {
@@ -344,7 +347,6 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
                   if (needMirror) {
                     ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset transform
                   }
-                  drew = true;
                 }
               }
             }
