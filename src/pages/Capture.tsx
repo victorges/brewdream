@@ -18,7 +18,8 @@ import { getSrc } from '@livepeer/react/external';
 import type { StreamDiffusionParams } from '@/lib/daydream';
 import { DaydreamCanvas } from '@/components/DaydreamCanvas';
 import type { DaydreamCanvasHandle } from '@/components/DaydreamCanvas';
-import { VideoRecorder, uploadToLivepeer, saveClipToDatabase } from '@/lib/recording';
+import { StudioRecorder, type StudioRecorderHandle } from '@/components/StudioRecorder';
+import { saveClipToDatabase } from '@/lib/recording';
 
 const FRONT_PROMPTS = [
   "studio ghibli portrait, soft rim light",
@@ -177,7 +178,7 @@ export default function Capture() {
   const [micPermissionDenied, setMicPermissionDenied] = useState(false);
 
   const daydreamRef = useRef<DaydreamCanvasHandle | null>(null);
-  const recorderRef = useRef<VideoRecorder | null>(null);
+  const studioRecorderRef = useRef<StudioRecorderHandle | null>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recordStartTimeRef = useRef<number | null>(null);
@@ -279,34 +280,10 @@ export default function Capture() {
       return;
     }
 
-    // Get the video element from the Livepeer Player
-    const playerVideo = playerContainerRef.current?.querySelector('video') as HTMLVideoElement;
-
-    if (!playerVideo) {
-      toast({
-        title: 'Error',
-        description: 'Video player not ready',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Check if captureStream is supported
-    if (!VideoRecorder.isSupported(playerVideo)) {
-      setCaptureSupported(false);
-      toast({
-        title: 'Recording not supported',
-        description: 'Your browser does not support video capture',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     try {
-      const recorder = new VideoRecorder(playerVideo);
-      await recorder.start();
+      // Start recording via StudioRecorder
+      await studioRecorderRef.current?.startRecording();
 
-      recorderRef.current = recorder;
       recordStartTimeRef.current = Date.now();
       setRecording(true);
 
@@ -335,7 +312,7 @@ export default function Capture() {
   };
 
   const stopRecording = async () => {
-    if (!recorderRef.current || !recordStartTimeRef.current || !streamId) {
+    if (!recordStartTimeRef.current || !streamId) {
       return;
     }
 
@@ -354,11 +331,10 @@ export default function Capture() {
 
       // Stop and discard the recording
       try {
-        await recorderRef.current.stop();
+        await studioRecorderRef.current?.stopRecording();
       } catch (error) {
         console.error('Error stopping recorder:', error);
       }
-      recorderRef.current = null;
 
       toast({
         title: 'Recording too short',
@@ -373,43 +349,37 @@ export default function Capture() {
     setUploadingClip(true);
     setLastDisplayedProgress(0); // Reset progress tracking
 
-    try {
-      // Stop the recorder and get the blob
-      const { blob, durationMs } = await recorderRef.current.stop();
-      recorderRef.current = null;
+    console.log('Recording stopped, processing via StudioRecorder...');
 
-      const timestamp = Date.now();
+    toast({
+      title: 'Processing...',
+      description: 'Uploading your clip to Livepeer Studio',
+    });
 
-      console.log('Recording stopped, uploading to Livepeer...');
+    // Stop recording - StudioRecorder will handle upload and call our callbacks
+    await studioRecorderRef.current?.stopRecording();
+  };
 
-      toast({
-        title: 'Processing...',
-        description: 'Uploading your clip to Livepeer Studio',
+  // StudioRecorder callback: Handle upload progress
+  const handleRecordingProgress = (progress: { phase: string; step?: string; progress?: number }) => {
+    if (progress.phase === 'processing' && progress.progress !== undefined) {
+      // Smooth progression: use API value if greater, otherwise increment by 1%
+      setLastDisplayedProgress(prev => {
+        let newProgress = Math.round(progress.progress * 100);
+        newProgress = newProgress > prev ? newProgress : prev + 1;
+        newProgress = Math.min(99, newProgress); // Cap at 99% while processing
+        setUploadProgress(`Processing: ${newProgress}%`);
+        return newProgress;
       });
+    } else {
+      setUploadProgress(progress.step || progress.phase);
+    }
+  };
 
-      // Upload to Livepeer Studio with progress tracking
-      const filename = `daydream-clip-${timestamp}.webm`;
-      const { assetId, playbackId: assetPlaybackId, downloadUrl } = await uploadToLivepeer(
-        blob,
-        filename,
-        (progress) => {
-          if (progress.phase === 'processing' && progress.progress !== undefined) {
-
-            // Smooth progression: use API value if greater, otherwise increment by 1%
-            setLastDisplayedProgress(prev => {
-              let newProgress = Math.round(progress.progress * 100);
-              newProgress = newProgress > prev ? newProgress : prev + 1;
-              newProgress = Math.min(99, newProgress); // Cap at 99% while processing
-              setUploadProgress(`Processing: ${newProgress}%`);
-              return newProgress;
-            });
-          } else {
-            setUploadProgress(progress.step || progress.phase);
-          }
-        }
-      );
-
-      console.log('Upload complete, saving to database...');
+  // StudioRecorder callback: Handle recording completion
+  const handleRecordingComplete = async (result: { assetId: string; playbackId: string; downloadUrl?: string; durationMs: number }) => {
+    try {
+      console.log('Recording complete, saving to database...', result);
 
       // Get session ID
       const { data: sessionData, error: sessionError } = await supabase
@@ -428,14 +398,15 @@ export default function Capture() {
       }
 
       // Save to database (clamp duration to valid range: 3-10s)
-      const clampedDuration = Math.min(Math.max(durationMs, 3000), 10000);
-      if (clampedDuration !== durationMs) {
-        console.log(`Duration clamped: ${durationMs}ms -> ${clampedDuration}ms`);
+      const clampedDuration = Math.min(Math.max(result.durationMs, 3000), 10000);
+      if (clampedDuration !== result.durationMs) {
+        console.log(`Duration clamped: ${result.durationMs}ms -> ${clampedDuration}ms`);
       }
+
       const clip = await saveClipToDatabase({
-        assetId,
-        playbackId: assetPlaybackId,
-        downloadUrl,
+        assetId: result.assetId,
+        playbackId: result.playbackId,
+        downloadUrl: result.downloadUrl,
         durationMs: clampedDuration,
         sessionId: sessionData.id,
         prompt,
@@ -451,7 +422,7 @@ export default function Capture() {
 
       navigate(`/clip/${clip.id}`);
     } catch (error: unknown) {
-      console.error('Error creating clip:', error);
+      console.error('Error saving clip to database:', error);
       toast({
         title: 'Error creating clip',
         description: error instanceof Error ? error.message : String(error),
@@ -462,6 +433,28 @@ export default function Capture() {
       setUploadProgress('');
       setLastDisplayedProgress(0);
     }
+  };
+
+  // StudioRecorder callback: Handle recording errors
+  const handleRecordingError = (error: Error) => {
+    console.error('Recording error:', error);
+
+    // Check if it's a browser support error
+    if (error.message.includes('not supported')) {
+      setCaptureSupported(false);
+    }
+
+    setRecording(false);
+    setUploadingClip(false);
+    setUploadProgress('');
+    setLastDisplayedProgress(0);
+    recordStartTimeRef.current = null;
+
+    toast({
+      title: 'Recording error',
+      description: error.message,
+      variant: 'destructive',
+    });
   };
 
   const src = useMemo(() => {
@@ -777,45 +770,52 @@ export default function Capture() {
       {/* Fixed Video Section - Square but smaller, starts from top */}
       <div className="flex-shrink-0 px-4 pt-4 pb-3 bg-neutral-950">
         <div className="relative w-full max-w-md mx-auto aspect-square bg-neutral-950 rounded-3xl overflow-hidden border border-neutral-900 shadow-lg">
-          {playbackId && src ? (
-            <div
-              ref={playerContainerRef}
-              className="player-container w-full h-full [&_[data-radix-aspect-ratio-wrapper]]:!h-full [&_[data-radix-aspect-ratio-wrapper]]:!pb-0"
-              style={{ width: '100%', height: '100%', position: 'relative' }}
-            >
-              <Player.Root
-                src={src}
-                autoPlay
-                lowLatency="force"
+          <StudioRecorder
+            ref={studioRecorderRef}
+            onProgress={handleRecordingProgress}
+            onComplete={handleRecordingComplete}
+            onError={handleRecordingError}
+          >
+            {playbackId && src ? (
+              <div
+                ref={playerContainerRef}
+                className="player-container w-full h-full [&_[data-radix-aspect-ratio-wrapper]]:!h-full [&_[data-radix-aspect-ratio-wrapper]]:!pb-0"
+                style={{ width: '100%', height: '100%', position: 'relative' }}
               >
-                <Player.Container
-                  className="w-full h-full"
-                  style={{ width: '100%', height: '100%', position: 'relative' }}
+                <Player.Root
+                  src={src}
+                  autoPlay
+                  lowLatency="force"
                 >
-                  <Player.Video
+                  <Player.Container
                     className="w-full h-full"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      objectFit: 'cover'
-                    }}
-                  />
-                  <Player.LoadingIndicator>
-                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/50 gap-4">
-                      <Loader2 className="w-12 h-12 animate-spin text-primary" />
-                      <p className="text-sm text-neutral-300 text-center px-4 min-h-[20px]">
-                        {showSlowLoadingMessage && "Hang tight! Stream loading can take up to 30 seconds..."}
-                      </p>
-                    </div>
-                  </Player.LoadingIndicator>
-                </Player.Container>
-              </Player.Root>
-            </div>
-          ) : (
-            <div className="w-full h-full flex items-center justify-center">
-              <Loader2 className="w-12 h-12 animate-spin text-neutral-400" />
-            </div>
-          )}
+                    style={{ width: '100%', height: '100%', position: 'relative' }}
+                  >
+                    <Player.Video
+                      className="w-full h-full"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        objectFit: 'cover'
+                      }}
+                    />
+                    <Player.LoadingIndicator>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/50 gap-4">
+                        <Loader2 className="w-12 h-12 animate-spin text-primary" />
+                        <p className="text-sm text-neutral-300 text-center px-4 min-h-[20px]">
+                          {showSlowLoadingMessage && "Hang tight! Stream loading can take up to 30 seconds..."}
+                        </p>
+                      </div>
+                    </Player.LoadingIndicator>
+                  </Player.Container>
+                </Player.Root>
+              </div>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center">
+                <Loader2 className="w-12 h-12 animate-spin text-neutral-400" />
+              </div>
+            )}
+          </StudioRecorder>
 
           {/* DaydreamCanvas: camera input preview (PiP in bottom-right) */}
           <div className="absolute bottom-3 right-3 w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-lg">
