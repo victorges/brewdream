@@ -181,7 +181,6 @@ export default function Capture() {
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const autoStopTimerRef = useRef<NodeJS.Timeout | null>(null);
   const recordStartTimeRef = useRef<number | null>(null);
-  const realAudioTrackRef = useRef<MediaStreamTrack | null>(null);
   const tabHiddenTimeRef = useRef<number | null>(null);
   const wasStreamActiveRef = useRef<boolean>(false);
 
@@ -206,10 +205,9 @@ export default function Capture() {
   const stopAllMediaStreams = useCallback(() => {
     console.log('Stopping all media streams...');
 
-    // Stop audio track we own (if any)
-    if (realAudioTrackRef.current) {
-      try { realAudioTrackRef.current.stop(); } catch (e) { /* Track may already be stopped */ }
-      realAudioTrackRef.current = null;
+    // DaydreamCanvas handles its own cleanup
+    if (daydreamRef.current) {
+      daydreamRef.current.stop().catch(console.error);
     }
 
     console.log('All media streams stopped');
@@ -248,44 +246,12 @@ export default function Capture() {
 
   // DaydreamCanvas abstracts streaming; no local WHIP logic here
 
-  const toggleMicrophone = async () => {
-    // If permission was denied or never granted, try to request it
-    if (micPermissionDenied || !realAudioTrackRef.current) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const audioTrack = stream.getAudioTracks()[0];
-        if (audioTrack && daydreamRef.current) {
-          await daydreamRef.current.replaceAudioSource(audioTrack);
-          realAudioTrackRef.current = audioTrack;
-          realAudioTrackRef.current.enabled = true;
-          setMicPermissionGranted(true);
-          setMicPermissionDenied(false);
-          setMicEnabled(true);
-          toast({ title: 'Microphone enabled', description: 'Now streaming live audio' });
-        }
-      } catch (error) {
-        console.error('Error requesting microphone permission:', error);
-        setMicPermissionDenied(true);
-        toast({
-          title: 'Microphone access denied',
-          description: 'Please allow microphone access in your browser settings',
-          variant: 'destructive',
-        });
-      }
-      return;
-    }
-
-    // We have the real audio track - just toggle the enabled property
-    if (realAudioTrackRef.current) {
-      const newEnabledState = !micEnabled;
-      realAudioTrackRef.current.enabled = newEnabledState;
-      setMicEnabled(newEnabledState);
-
-      toast({
-        title: newEnabledState ? 'Microphone enabled' : 'Microphone disabled',
-        description: newEnabledState ? 'Now streaming live audio' : 'Microphone muted',
-      });
-    }
+  const toggleMicrophone = () => {
+    setMicEnabled(!micEnabled);
+    toast({
+      title: !micEnabled ? 'Microphone enabled' : 'Microphone muted',
+      description: !micEnabled ? 'Now streaming live audio' : 'Audio is now muted',
+    });
   };
 
   // Params are passed directly to DaydreamCanvas (serial updates handled internally)
@@ -856,11 +822,17 @@ export default function Capture() {
             <DaydreamCanvas
               ref={daydreamRef}
               size={512}
-              fps={24}
               className="w-full h-full object-cover"
-              useCamera
-              cameraFacingMode={cameraType === 'front' ? 'user' : 'environment'}
-              mirrorFront
+              videoSource={{
+                type: 'camera',
+                mode: cameraType === 'front' ? 'front' : 'back',
+                mirrorFront: true,
+              }}
+              audioSource={
+                micEnabled
+                  ? { type: 'microphone' }
+                  : { type: 'silent' }
+              }
               params={canvasParams}
               onReady={async ({ streamId: sid, playbackId: pid }) => {
                 setStreamId(sid);

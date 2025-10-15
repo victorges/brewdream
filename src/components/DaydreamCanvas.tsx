@@ -26,17 +26,34 @@ export interface DaydreamCanvasHandle {
 
 export interface DaydreamCanvasProps {
   params: StreamDiffusionParams;
-  // Video frame source (optional). If provided, the component will draw frames at the configured FPS.
-  videoSource?: MediaStream; // e.g., external camera MediaStream
-  // Built-in camera capture (optional). If enabled, the component obtains camera stream internally.
-  useCamera?: boolean; // default false
-  cameraFacingMode?: 'user' | 'environment'; // when useCamera, default 'user'
-  mirrorFront?: boolean; // mirror draw for front camera, default true
-  // Audio source (optional). If omitted, a silent track will be attempted.
-  audioSource?: MediaStream | MediaStreamTrack | null;
-  // Built-in microphone capture (optional)
-  useMicrophone?: boolean; // default false
-  microphoneConstraints?: MediaTrackConstraints;
+  // Video frame source
+  videoSource:
+    | {
+        type: 'stream';
+        stream: MediaStream;
+      }
+    | {
+        type: 'canvas';
+        canvas: HTMLCanvasElement;
+      }
+    | {
+        type: 'camera';
+        mode: 'front' | 'back';
+        mirrorFront?: boolean; // mirror draw for front camera, default true
+      };
+  // Audio source (defaults to silent if not provided)
+  audioSource?:
+    | {
+        type: 'stream';
+        stream: MediaStream | MediaStreamTrack;
+      }
+    | {
+        type: 'microphone';
+        constraints?: MediaTrackConstraints;
+      }
+    | {
+        type: 'silent';
+      };
   // Canvas/display
   size?: number; // square target, default 512
   cover?: boolean; // crop-to-fill when copying from non-square source (default true)
@@ -46,8 +63,7 @@ export interface DaydreamCanvasProps {
   canvasRef?: React.Ref<HTMLCanvasElement>; // optional ref to the canvas element
   // Lifecycle & behavior
   autoStart?: boolean; // start on mount (default true)
-  alwaysOn?: boolean; // keep alive in background (default false)
-  fps?: number; // capture and render FPS (default 24)
+  alwaysOn?: boolean; // keep alive in background on mobile (default false)
   // Events
   onReady?: (info: { streamId: string; playbackId: string }) => void;
   onError?: (error: unknown) => void;
@@ -91,12 +107,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
     {
       params,
       videoSource,
-      useCamera = false,
-      cameraFacingMode = 'user',
-      mirrorFront = true,
-      audioSource = null,
-      useMicrophone = false,
-      microphoneConstraints,
+      audioSource,
       size = 512,
       cover = true,
       enforceSquare = true,
@@ -105,16 +116,36 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       canvasRef: externalCanvasRef,
       autoStart = true,
       alwaysOn = false,
-      fps = 24,
       onReady,
       onError,
     },
     ref
   ) => {
+    // Derive FPS from video source (try to match source, default to 24)
+    const fps = useMemo(() => {
+      if (videoSource.type === 'stream') {
+        const videoTrack = videoSource.stream.getVideoTracks()[0];
+        const settings = videoTrack?.getSettings();
+        return settings?.frameRate || 24;
+      }
+      return 24; // Default for camera and canvas sources
+    }, [videoSource]);
+
+    // Derive camera settings
+    const useCamera = videoSource.type === 'camera';
+    const cameraFacingMode = videoSource.type === 'camera' ? videoSource.mode : 'front';
+    const mirrorFront = videoSource.type === 'camera' ? (videoSource.mirrorFront ?? true) : true;
+
+    // Derive audio settings
+    const useMicrophone = audioSource?.type === 'microphone';
+    const microphoneConstraints = audioSource?.type === 'microphone' ? audioSource.constraints : undefined;
+    const externalAudioSource = audioSource?.type === 'stream' ? audioSource.stream : null;
     // Canvas and optional hidden video element for MediaStream sources
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const hiddenVideoRef = useRef<HTMLVideoElement | null>(null);
     const [ownedCameraStream, setOwnedCameraStream] = useState<MediaStream | null>(null);
+    const [ownedAudioTrack, setOwnedAudioTrack] = useState<MediaStreamTrack | null>(null);
+    const [isStarted, setIsStarted] = useState(false);
 
     // Publishing state
     const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -191,9 +222,17 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
 
     // Update video source when stream changes
     useEffect(() => {
-      const effectiveStream = videoSource || ownedCameraStream;
       const video = hiddenVideoRef.current;
       if (!video) return;
+
+      // Determine the effective video stream
+      let effectiveStream: MediaStream | null = null;
+      if (videoSource.type === 'stream') {
+        effectiveStream = videoSource.stream;
+      } else if (videoSource.type === 'camera') {
+        effectiveStream = ownedCameraStream;
+      }
+      // canvas type doesn't use the hidden video element
 
       if (!effectiveStream) {
         video.srcObject = null;
@@ -208,7 +247,15 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
 
     // Optionally obtain camera stream internally
     useEffect(() => {
-      if (!useCamera) return;
+      if (!useCamera || !isStarted) {
+        // Clean up owned camera stream when switching away from camera or when stopped
+        if (ownedCameraStream) {
+          ownedCameraStream.getTracks().forEach(t => t.stop());
+          setOwnedCameraStream(null);
+        }
+        return;
+      }
+
       let cancelled = false;
       let localStream: MediaStream | null = null;
       (async () => {
@@ -235,7 +282,8 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
           setOwnedCameraStream(null);
         }
       };
-    }, [useCamera, cameraFacingMode, onError, size]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [useCamera, cameraFacingMode, onError, size, isStarted]);
 
     // Start/stop render-copy loop based on sources
     const startCopyLoop = useCallback(() => {
@@ -258,13 +306,29 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
               ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
               let drew = false;
 
-              if (hiddenVideoRef.current && hiddenVideoRef.current.readyState >= hiddenVideoRef.current.HAVE_CURRENT_DATA) {
+              // Draw from source canvas (type: 'canvas')
+              if (videoSource.type === 'canvas') {
+                const sourceCanvas = videoSource.canvas;
+                const srcW = sourceCanvas.width;
+                const srcH = sourceCanvas.height;
+                if (srcW > 0 && srcH > 0) {
+                  if (cover) {
+                    const { dx, dy, drawWidth, drawHeight } = computeCoverDrawRect(srcW, srcH, sizePx);
+                    ctx.drawImage(sourceCanvas, dx, dy, drawWidth, drawHeight);
+                  } else {
+                    ctx.drawImage(sourceCanvas, 0, 0, sizePx, sizePx);
+                  }
+                  drew = true;
+                }
+              }
+              // Draw from hidden video element (types: 'stream' or 'camera')
+              else if (hiddenVideoRef.current && hiddenVideoRef.current.readyState >= hiddenVideoRef.current.HAVE_CURRENT_DATA) {
                 const v = hiddenVideoRef.current;
                 const srcW = v.videoWidth;
                 const srcH = v.videoHeight;
                 if (srcW > 0 && srcH > 0) {
-                  // Use setTransform for mirroring (like old working code)
-                  const needMirror = mirrorFront && (cameraFacingMode ?? 'user') === 'user' && (useCamera || videoSource);
+                  // Mirror for front camera
+                  const needMirror = mirrorFront && cameraFacingMode === 'front' && videoSource.type === 'camera';
                   if (needMirror) {
                     ctx.setTransform(-1, 0, 0, 1, sizePx, 0);
                   }
@@ -289,7 +353,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
         rafIdRef.current = requestAnimationFrame(tick);
       };
       rafIdRef.current = requestAnimationFrame(tick);
-    }, [cameraFacingMode, cover, enforceSquare, fps, mirrorFront, size, useCamera, videoSource]);
+    }, [cameraFacingMode, cover, enforceSquare, fps, mirrorFront, size, videoSource]);
 
     const stopCopyLoop = useCallback(() => {
       runningCopyLoopRef.current = false;
@@ -318,6 +382,100 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
         return null;
       }
     }, []);
+
+    // Acquire audio track based on audioSource type (setup/teardown)
+    useEffect(() => {
+      if (!isStarted) {
+        // Clean up when stopped
+        setOwnedAudioTrack(null);
+        return;
+      }
+
+      let cancelled = false;
+      let ownedTrack: MediaStreamTrack | null = null;
+
+      (async () => {
+        if (audioSource?.type === 'stream') {
+          // External audio stream - extract track but don't own it
+          if (audioSource.stream instanceof MediaStream) {
+            const track = audioSource.stream.getAudioTracks()[0] || null;
+            if (!cancelled) setOwnedAudioTrack(track);
+          } else if ('kind' in audioSource.stream && audioSource.stream.kind === 'audio') {
+            if (!cancelled) setOwnedAudioTrack(audioSource.stream);
+          }
+        } else if (audioSource?.type === 'microphone') {
+          // Request microphone - we own this track
+          try {
+            const constraints: MediaStreamConstraints = {
+              audio: audioSource.constraints || { echoCancellation: true, noiseSuppression: true },
+              video: false,
+            };
+            const micStream = await navigator.mediaDevices.getUserMedia(constraints);
+            const micTrack = micStream.getAudioTracks()[0];
+            if (micTrack && !cancelled) {
+              ownedTrack = micTrack;
+              builtInMicTrackRef.current = micTrack;
+              setOwnedAudioTrack(micTrack);
+            }
+          } catch (e) {
+            onError?.(e);
+            if (!cancelled) setOwnedAudioTrack(null);
+          }
+        } else {
+          // Silent audio - we own this track
+          const silent = createSilentAudioTrack();
+          if (silent && !cancelled) {
+            ownedTrack = silent;
+            silentAudioTrackRef.current = silent;
+            setOwnedAudioTrack(silent);
+          } else if (!cancelled) {
+            setOwnedAudioTrack(null);
+          }
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+        // Only stop tracks we own (microphone and silent)
+        if (ownedTrack) {
+          try {
+            ownedTrack.stop();
+          } catch (e) {
+            /* Track may already be stopped */
+          }
+        }
+        setOwnedAudioTrack(null);
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [audioSource?.type, audioSource?.type === 'stream' ? audioSource.stream : null, audioSource?.type === 'microphone' ? JSON.stringify(audioSource.constraints) : null, createSilentAudioTrack, onError, isStarted]);
+
+    // Replace audio track when ownedAudioTrack changes
+    useEffect(() => {
+      // Only react if streaming has started
+      if (!pcRef.current || !publishStreamRef.current || !ownedAudioTrack) return;
+
+      (async () => {
+        const publishStream = publishStreamRef.current;
+        const pc = pcRef.current;
+        if (!publishStream || !pc) return;
+
+        // Remove old audio tracks
+        publishStream.getAudioTracks().forEach((t) => publishStream.removeTrack(t));
+        // Add new audio track
+        publishStream.addTrack(ownedAudioTrack);
+
+        // Replace on RTCPeerConnection
+        const sender = pc.getSenders().find((s) => s.track?.kind === 'audio');
+        if (sender) {
+          await sender.replaceTrack(ownedAudioTrack);
+        }
+
+        currentAudioTrackRef.current = ownedAudioTrack;
+      })().catch((e) => {
+        console.error('[DaydreamCanvas] Error replacing audio track:', e);
+        onError?.(e);
+      });
+    }, [ownedAudioTrack, onError]);
 
     // Request built-in microphone on demand
     const requestMicrophone = useCallback(async (): Promise<boolean> => {
@@ -369,20 +527,23 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
 
       // Handle audio
       let audioTrack: MediaStreamTrack | null = null;
-      if (audioSource instanceof MediaStream) {
-        audioTrack = audioSource.getAudioTracks()[0] || null;
-      } else if (audioSource && 'kind' in audioSource) {
-        audioTrack = audioSource.kind === 'audio' ? audioSource : null;
-      }
 
-      if (!audioTrack) {
-        if (builtInMicTrackRef.current) {
-          audioTrack = builtInMicTrackRef.current;
+      // Check for external audio stream
+      if (externalAudioSource) {
+        if (externalAudioSource instanceof MediaStream) {
+          audioTrack = externalAudioSource.getAudioTracks()[0] || null;
+        } else if ('kind' in externalAudioSource) {
+          audioTrack = externalAudioSource.kind === 'audio' ? externalAudioSource : null;
         }
       }
 
+      // Fall back to built-in microphone
+      if (!audioTrack && builtInMicTrackRef.current) {
+        audioTrack = builtInMicTrackRef.current;
+      }
+
+      // Fall back to silent audio track
       if (!audioTrack) {
-        // Add a silent audio track if possible
         const silent = createSilentAudioTrack();
         if (silent) {
           silentAudioTrackRef.current = silent;
@@ -398,7 +559,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
       publishStreamRef.current = publishStream;
       currentAudioTrackRef.current = audioTrack;
       return publishStream;
-    }, [audioSource, createSilentAudioTrack, enforceSquare, fps, size]);
+    }, [externalAudioSource, createSilentAudioTrack, enforceSquare, fps, size]);
 
     // Replace audio track live
     const replaceAudioSource = useCallback(
@@ -445,7 +606,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
         }
         currentAudioTrackRef.current = newTrack;
       },
-      []
+      [createSilentAudioTrack]
     );
 
     // Serial params update queue
@@ -546,6 +707,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
     const start = useCallback(async () => {
       if (pcRef.current) return; // already running
       try {
+        setIsStarted(true);
         // creating_stream
 
         // Kick off copy loop if we have any video source (external or internal camera)
@@ -624,6 +786,7 @@ export const DaydreamCanvas = forwardRef<DaydreamCanvasHandle, DaydreamCanvasPro
 
     // Stop publishing and cleanup
     const stop = useCallback(async () => {
+      setIsStarted(false);
       stopCopyLoop();
       readyForParamUpdatesRef.current = false;
 
