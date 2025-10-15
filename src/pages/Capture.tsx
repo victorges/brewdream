@@ -360,7 +360,7 @@ export default function Capture() {
   };
 
   // StudioRecorder callback: Handle upload progress
-  const handleRecordingProgress = (progress: { phase: string; step?: string; progress?: number }) => {
+  const handleRecordingProgress = useCallback((progress: { phase: string; step?: string; progress?: number }) => {
     if (progress.phase === 'processing' && progress.progress !== undefined) {
       // Smooth progression: use API value if greater, otherwise increment by 1%
       setLastDisplayedProgress(prev => {
@@ -373,10 +373,10 @@ export default function Capture() {
     } else {
       setUploadProgress(progress.step || progress.phase);
     }
-  };
+  }, [setUploadProgress, setLastDisplayedProgress]);
 
   // StudioRecorder callback: Handle recording completion
-  const handleRecordingComplete = async (result: { assetId: string; playbackId: string; downloadUrl?: string; durationMs: number }) => {
+  const handleRecordingComplete = useCallback(async (result: { assetId: string; playbackId: string; downloadUrl?: string; durationMs: number }) => {
     try {
       console.log('Recording complete, saving to database...', result);
 
@@ -432,10 +432,10 @@ export default function Capture() {
       setUploadProgress('');
       setLastDisplayedProgress(0);
     }
-  };
+  }, [streamId, prompt, selectedTexture, textureWeight, intensity, quality, navigate, toast]);
 
   // StudioRecorder callback: Handle recording errors
-  const handleRecordingError = (error: Error) => {
+  const handleRecordingError = useCallback((error: Error) => {
     console.error('Recording error:', error);
 
     // Check if it's a browser support error
@@ -454,7 +454,7 @@ export default function Capture() {
       description: error.message,
       variant: 'destructive',
     });
-  };
+  }, [setCaptureSupported, setRecording, setUploadingClip, setUploadProgress, setLastDisplayedProgress, recordStartTimeRef, toast]);
 
   const src = useMemo(() => {
     if (!playbackId) {
@@ -685,6 +685,45 @@ export default function Capture() {
     }
   }, [playbackId, isPlaying]);
 
+
+  const onDaydreamReady = useCallback(async ({ streamId: sid, playbackId: pid }) => {
+    setStreamId(sid);
+    setPlaybackId(pid);
+    setLoading(false);
+    // Ensure session exists
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: userData } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', user.id)
+      .single();
+    if (userData) {
+      // Map UI cameraType ('user'|'environment') to DB enum ('front'|'back')
+      const cameraDbType = cameraType === 'user' ? 'front' : 'back';
+      const { error: insertError } = await supabase.from('sessions').insert({
+        user_id: userData.id,
+        stream_id: sid,
+        playback_id: pid,
+        camera_type: cameraDbType,
+      });
+      if (insertError) {
+        console.error('Failed to insert session:', insertError, {
+          userId: userData.id,
+          streamId: sid,
+          playbackId: pid,
+          cameraType,
+          cameraDbType,
+        });
+      }
+    }
+  }, [cameraType, prompt, navigate, toast]);
+  // Rely on onReady + player events; no onStatus needed
+  const onDaydreamError = useCallback((e) => {
+    console.error('DaydreamCanvas error', e);
+    setLoading(false);
+  }, [setLoading]);
+
   if (!cameraType) {
     // Show loading state while auto-starting on desktop
     if (loading) {
@@ -833,43 +872,8 @@ export default function Capture() {
                   : { type: 'silent' }
               }
               params={canvasParams}
-              onReady={async ({ streamId: sid, playbackId: pid }) => {
-                setStreamId(sid);
-                setPlaybackId(pid);
-                setLoading(false);
-                // Ensure session exists
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) return;
-                const { data: userData } = await supabase
-                  .from('users')
-                  .select('id')
-                  .eq('id', user.id)
-                  .single();
-                if (userData) {
-                  // Map UI cameraType ('user'|'environment') to DB enum ('front'|'back')
-                  const cameraDbType = cameraType === 'user' ? 'front' : 'back';
-                  const { error: insertError } = await supabase.from('sessions').insert({
-                    user_id: userData.id,
-                    stream_id: sid,
-                    playback_id: pid,
-                    camera_type: cameraDbType,
-                  });
-                  if (insertError) {
-                    console.error('Failed to insert session:', insertError, {
-                      userId: userData.id,
-                      streamId: sid,
-                      playbackId: pid,
-                      cameraType,
-                      cameraDbType,
-                    });
-                  }
-                }
-              }}
-              // Rely on onReady + player events; no onStatus needed
-              onError={(e) => {
-                console.error('DaydreamCanvas error', e);
-                setLoading(false);
-              }}
+              onReady={onDaydreamReady}
+              onError={onDaydreamError}
             />
           </div>
 
