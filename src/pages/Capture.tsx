@@ -560,32 +560,32 @@ export default function Capture() {
       t_index_list: tIndex,
       seed: 42,
       num_inference_steps: 50,
-      controlnets: selectedTexture
-        ? [
-            {
-              enabled: true,
-              model_id: 'xinsir/controlnet-depth-sdxl-1.0',
-              preprocessor: 'depth_tensorrt',
-              preprocessor_params: {},
-              conditioning_scale: 0.6,
-            },
-            {
-              enabled: true,
-              model_id: 'xinsir/controlnet-canny-sdxl-1.0',
-              preprocessor: 'canny',
-              preprocessor_params: {},
-              conditioning_scale: 0.3,
-            },
-            {
-              enabled: true,
-              model_id: 'xinsir/controlnet-tile-sdxl-1.0',
-              preprocessor: 'feedback',
-              preprocessor_params: {},
-              conditioning_scale: 0.2,
-            },
-          ]
-        : [],
+      controlnets: [
+        {
+          enabled: true,
+          model_id: 'xinsir/controlnet-depth-sdxl-1.0',
+          preprocessor: 'depth_tensorrt',
+          preprocessor_params: {},
+          conditioning_scale: 0.6,
+        },
+        {
+          enabled: true,
+          model_id: 'xinsir/controlnet-canny-sdxl-1.0',
+          preprocessor: 'canny',
+          preprocessor_params: {},
+          conditioning_scale: 0.3,
+        },
+        {
+          enabled: true,
+          model_id: 'xinsir/controlnet-tile-sdxl-1.0',
+          preprocessor: 'feedback',
+          preprocessor_params: {},
+          conditioning_scale: 0.2,
+        },
+      ],
     };
+
+    // IP adapter is conditional based on texture selection
     if (selectedTexture) {
       const textureUrl = TEXTURES.find((t) => t.id === selectedTexture)?.url;
       return {
@@ -600,6 +600,7 @@ export default function Capture() {
         ip_adapter_style_image_url: textureUrl,
       };
     }
+
     return {
       ...base,
       ip_adapter: {
