@@ -158,7 +158,7 @@ export function DiffusionParams({
     // Compute new stream params
     let sdParams: StreamDiffusionParams = {
       model_id: "stabilityai/sdxl-turbo",
-      prompt: prompt?.trim() || "passthrough",
+      prompt: prompt?.trim() || "barista",
       negative_prompt: "blurry, low quality, flat, 2d, distorted",
       t_index_list: calculateTIndexList(intensity[0], quality[0]),
       seed: 42,
@@ -214,7 +214,7 @@ export function DiffusionParams({
       };
     }
     handleStreamDiffusionParams(sdParams);
-  }, [handleStreamDiffusionParams, prompt, intensity, quality, textureId, textureWeight]);
+  }, [handleStreamDiffusionParams, prompt, intensity, quality, textureId, textureWeight, onError]);
 
   useEffect(() => {
     updateBrewParams({ prompt: prompt });
@@ -222,7 +222,7 @@ export function DiffusionParams({
 
   const shufflePrompt = useCallback(() => {
     const prompts = !cameraType
-      ? ["passthrough"]
+      ? ["barista"]
       : cameraType === "user"
       ? FRONT_PROMPTS
       : BACK_PROMPTS;
