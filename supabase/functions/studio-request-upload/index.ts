@@ -18,7 +18,7 @@ serve(async (req) => {
 
     // Create a unique name for the asset
     const name = `Brewdream Clip ${new Date().toISOString()}`;
-    
+
     console.log('Requesting upload URL for:', name);
 
     // Request upload from Livepeer Studio
@@ -45,17 +45,17 @@ serve(async (req) => {
     const assetId = data?.asset?.id || data?.assetId || data?.id;
     const tus = data?.tus ? { url: data.tus.endpoint } : undefined;
 
-    return new Response(JSON.stringify({ 
-      uploadUrl, 
-      assetId, 
-      tus 
+    return new Response(JSON.stringify({
+      uploadUrl,
+      assetId,
+      tus
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (error: any) {
     console.error('Error in studio-request-upload function:', error);
-    return new Response(JSON.stringify({ 
-      error: error.message 
+    return new Response(JSON.stringify({
+      error: error.message
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
