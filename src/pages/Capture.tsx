@@ -150,6 +150,7 @@ const hasMultipleCameras = (): boolean => {
 
 export default function Capture() {
   const [cameraType, setCameraType] = useState<'user' | 'environment' | null>(null);
+  const [setupComplete, setSetupComplete] = useState(false);
   const [loading, setLoading] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [playbackId, setPlaybackId] = useState<string | null>(null);
@@ -203,14 +204,25 @@ export default function Capture() {
 
   const selectCamera = useCallback(async (type: 'user' | 'environment') => {
     setCameraType(type);
-    const randomPrompt = type === 'user'
-      ? FRONT_PROMPTS[Math.floor(Math.random() * FRONT_PROMPTS.length)]
-      : BACK_PROMPTS[Math.floor(Math.random() * BACK_PROMPTS.length)];
-    setPrompt(randomPrompt);
+    // Don't set initial prompt - let user configure it
+    setPrompt('');
+    // Don't start stream yet - wait for user to configure params and hit "Start"
+  }, []);
 
-    // Pass the initial prompt to initializeStream
-    await initializeStream(type, randomPrompt);
-  }, [initializeStream]);
+  const startStream = useCallback(async () => {
+    if (!cameraType) return;
+
+    // If prompt is still empty, randomize it
+    let finalPrompt = prompt;
+    if (!finalPrompt.trim()) {
+      const prompts = cameraType === 'user' ? FRONT_PROMPTS : BACK_PROMPTS;
+      finalPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+      setPrompt(finalPrompt);
+    }
+
+    setSetupComplete(true);
+    await initializeStream(cameraType, finalPrompt);
+  }, [cameraType, prompt, initializeStream]);
 
   // Auto-start camera on desktop (non-mobile devices)
   useEffect(() => {
@@ -694,6 +706,184 @@ export default function Capture() {
     setLoading(false);
   }, [setLoading]);
 
+  // Parameter setup screen - shown after camera selection but before stream starts
+  if (cameraType && !setupComplete) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-between p-6 bg-neutral-950 text-neutral-200">
+        <div className="flex-1 flex flex-col items-center justify-center w-full max-w-md mx-auto space-y-4">
+          <div className="text-center space-y-1">
+            <h1 className="text-2xl font-bold bg-gradient-to-r from-neutral-100 to-neutral-400 bg-clip-text text-transparent">
+              Design Your Brew
+            </h1>
+            <p className="text-sm text-neutral-400">
+              Choose your ingredients and start brewing
+            </p>
+          </div>
+
+          <div className="w-full bg-neutral-900 rounded-3xl p-5 border border-neutral-800 space-y-4 shadow-inner">
+            <div>
+              <label className="text-sm font-medium mb-2 block text-neutral-300">Prompt</label>
+              <div className="flex items-start gap-2">
+                <Textarea
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  placeholder="Write your style or tap shuffle to surprise yourself →"
+                  className="bg-neutral-950 border-neutral-800 focus:border-neutral-600 focus:ring-0 text-neutral-100 placeholder:text-neutral-500 min-h-[60px] resize-none"
+                  rows={2}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => {
+                    const prompts = cameraType === 'user' ? FRONT_PROMPTS : BACK_PROMPTS;
+                    const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+                    setPrompt(randomPrompt);
+                  }}
+                  className="bg-neutral-950 border-neutral-800 hover:border-neutral-600 hover:bg-neutral-850 shrink-0"
+                  title="Random prompt"
+                >
+                  <RefreshCw className="h-4 w-4 text-neutral-300" />
+                </Button>
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block text-neutral-300">
+                Texture
+              </label>
+
+              <div className="flex items-center gap-4">
+                <Popover open={texturePopoverOpen} onOpenChange={setTexturePopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="flex items-center gap-2 bg-neutral-950 border-neutral-800 hover:border-neutral-600 hover:bg-neutral-850 !w-16 !h-16 rounded-full overflow-hidden px-0 py-0 w-full sm:w-auto"
+                    >
+                      {selectedTexture ? (
+                        <>
+                          <img
+                            src={TEXTURES.find((t) => t.id === selectedTexture)?.url}
+                            alt="Selected texture"
+                            className="w-8 h-8 object-cover rounded"
+                          />
+                        </>
+                      ) : (
+                        <ImageOff className="w-5 h-5 text-neutral-400" />
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+
+                  <PopoverContent
+                    align="start"
+                    sideOffset={8}
+                    className="w-[90vw] sm:w-80 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-xl p-4"
+                  >
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                      <Button
+                        onClick={() => {
+                          setSelectedTexture(null);
+                          setTexturePopoverOpen(false);
+                        }}
+                        variant={selectedTexture === null ? "default" : "outline"}
+                        className={`aspect-square ${
+                          selectedTexture === null
+                            ? "bg-neutral-800 text-neutral-100"
+                            : "bg-neutral-950 border-neutral-800 hover:border-neutral-600"
+                        }`}
+                      >
+                        <ImageOff className="w-5 h-5 text-neutral-400" />
+                      </Button>
+                      {TEXTURES.map((texture) => (
+                        <Button
+                          key={texture.id}
+                          onClick={() => {
+                            setSelectedTexture(texture.id);
+                            setTexturePopoverOpen(false);
+                          }}
+                          variant={selectedTexture === texture.id ? "default" : "outline"}
+                          className={`aspect-square p-0 overflow-hidden ${
+                            selectedTexture === texture.id
+                              ? "ring-2 ring-neutral-400"
+                              : "border border-neutral-800 hover:border-neutral-600 hover:bg-neutral-850"
+                          }`}
+                        >
+                          <img
+                            src={texture.url}
+                            alt={texture.name}
+                            className="w-full h-full object-cover rounded-lg"
+                          />
+                        </Button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+
+                {selectedTexture && (
+                  <div className="flex-1">
+                    <label className="text-sm font-medium block mb-2 text-neutral-300">
+                      Strength: {textureWeight[0].toFixed(2)}
+                    </label>
+                    <Slider
+                      value={textureWeight}
+                      onValueChange={setTextureWeight}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      className="w-full accent-neutral-400"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block text-neutral-300">
+                Intensity: {intensity[0].toFixed(1)}
+              </label>
+              <Slider
+                value={intensity}
+                onValueChange={setIntensity}
+                min={1}
+                max={10}
+                step={0.1}
+                className="w-full accent-neutral-400 h-6"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block text-neutral-300">
+                Quality: {quality[0].toFixed(2)}
+              </label>
+              <Slider
+                value={quality}
+                onValueChange={setQuality}
+                min={0}
+                max={1}
+                step={0.01}
+                className="w-full accent-neutral-400 h-6"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Start Button at Bottom */}
+        <div className="w-full max-w-md mx-auto pt-4 border-t border-neutral-800">
+          <Button
+            onClick={startStream}
+            disabled={prompt.length < 3}
+            className="w-full h-16 bg-gradient-to-r from-neutral-200 to-neutral-500 text-neutral-900 font-semibold text-lg rounded-2xl hover:from-neutral-300 hover:to-neutral-600 transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+          >
+            <span className="flex items-center gap-3">
+              <Sparkles className="w-6 h-6 text-neutral-900" />
+              Start
+            </span>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!cameraType) {
     // Show loading state while auto-starting on desktop
     if (loading) {
@@ -776,7 +966,9 @@ export default function Capture() {
   return (
     <div className="fixed inset-0 flex flex-col bg-neutral-950 text-neutral-200">
       {/* Fixed Video Section - Square but smaller, starts from top */}
-      <div className="flex-shrink-0 px-4 pt-4 pb-3 bg-neutral-950">
+      <div className={`flex-shrink-0 px-4 pt-4 pb-3 bg-neutral-950 transition-all duration-700 ${
+        loading ? 'opacity-0 scale-95' : 'opacity-100 scale-100'
+      }`}>
         <div className="relative w-full max-w-md mx-auto aspect-square bg-neutral-950 rounded-3xl overflow-hidden border border-neutral-900 shadow-lg">
           <StudioRecorder
             ref={studioRecorderRef}
@@ -874,21 +1066,24 @@ export default function Capture() {
 
       {/* Scrollable Controls Section */}
       <div className="flex-1 overflow-y-auto px-4 pb-4 min-h-0">
-        <div className="max-w-md mx-auto space-y-3">
+        <div className="max-w-md mx-auto space-y-4">
           {/* Record Button */}
           {!captureSupported && (
             <div className="bg-yellow-900/20 border border-yellow-700/30 rounded-lg p-3 text-sm text-yellow-200">
               ⚠️ Video capture not supported on this browser. Recording is disabled.
             </div>
           )}
-          <Button
-            onClick={isMobile ? undefined : toggleRecording}
-            onPointerDown={isMobile ? startRecording : undefined}
-            onPointerUp={isMobile ? stopRecording : undefined}
-            onPointerLeave={isMobile ? stopRecording : undefined}
-            onContextMenu={(e) => e.preventDefault()}
-            disabled={loading || uploadingClip || !playbackId || !captureSupported || !isPlaying}
-            className="w-full h-14 bg-gradient-to-r from-neutral-200 to-neutral-500 text-neutral-900 font-semibold rounded-2xl hover:from-neutral-300 hover:to-neutral-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed select-none touch-manipulation"
+          <div className={`transition-all duration-700 ${
+            loading ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'
+          }`}>
+            <Button
+              onClick={isMobile ? undefined : toggleRecording}
+              onPointerDown={isMobile ? startRecording : undefined}
+              onPointerUp={isMobile ? stopRecording : undefined}
+              onPointerLeave={isMobile ? stopRecording : undefined}
+              onContextMenu={(e) => e.preventDefault()}
+              disabled={loading || uploadingClip || !playbackId || !captureSupported || !isPlaying}
+              className="w-full h-14 bg-gradient-to-r from-neutral-200 to-neutral-500 text-neutral-900 font-semibold rounded-2xl hover:from-neutral-300 hover:to-neutral-600 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed select-none touch-manipulation"
             style={{
               WebkitUserSelect: 'none',
               WebkitTouchCallout: 'none',
@@ -917,10 +1112,13 @@ export default function Capture() {
                 {isMobile ? 'Hold to Brew' : 'Click to Start Brewing'}
               </span>
             )}
-          </Button>
+            </Button>
+          </div>
 
           {/* Controls */}
-          <div className="bg-neutral-950 rounded-3xl p-5 border border-neutral-800 space-y-4 shadow-inner">
+          <div className={`bg-neutral-950 rounded-3xl p-5 border border-neutral-800 space-y-4 shadow-inner transition-all duration-700 delay-150 ${
+            loading ? 'opacity-0 translate-y-8' : 'opacity-100 translate-y-0'
+          }`}>
             <div>
               <label className="text-sm font-medium mb-2 block text-neutral-300">Prompt</label>
               <div className="flex items-start gap-2">
@@ -1022,7 +1220,7 @@ export default function Capture() {
 
                 {selectedTexture && (
                   <div className="flex-1">
-                    <label className="text-sm font-medium block mb-1 text-neutral-300">
+                    <label className="text-sm font-medium block mb-2 text-neutral-300">
                       Strength: {textureWeight[0].toFixed(2)}
                     </label>
                     <Slider
@@ -1048,7 +1246,7 @@ export default function Capture() {
                 min={1}
                 max={10}
                 step={0.1}
-                className="w-full accent-neutral-400"
+                className="w-full accent-neutral-400 h-6"
               />
             </div>
 
@@ -1062,7 +1260,7 @@ export default function Capture() {
                 min={0}
                 max={1}
                 step={0.01}
-                className="w-full accent-neutral-400"
+                className="w-full accent-neutral-400 h-6"
               />
             </div>
           </div>
