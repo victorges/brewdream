@@ -40,15 +40,15 @@ serve(async (req) => {
     const data = await response.json();
     console.log('Upload URL response:', data);
 
-    // Normalize response structure for client
-    const uploadUrl = data?.url || data?.asset?.url;
-    const assetId = data?.asset?.id || data?.assetId || data?.id;
-    const tus = data?.tus ? { url: data.tus.endpoint } : undefined;
+    // Normalize response structure for client (matching Livepeer API schema)
+    const uploadUrl = data?.url;
+    const tusEndpoint = data?.tusEndpoint;
+    const assetId = data?.asset?.id;
 
     return new Response(JSON.stringify({
       uploadUrl,
-      assetId,
-      tus
+      tusEndpoint,
+      assetId
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

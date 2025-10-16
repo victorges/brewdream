@@ -196,21 +196,21 @@ export async function uploadToLivepeer(
   // Step 2: Upload using TUS resumable upload (preferred) or PUT fallback
   const file = new File([blob], filename, { type: blob.type });
 
-  if (uploadData?.tus?.url) {
+  if (uploadData?.tusEndpoint) {
     // Use TUS resumable upload
     console.log('Starting TUS upload...', {
       size: blob.size,
       type: blob.type,
       filename,
-      tusEndpoint: uploadData.tus.url
+      tusEndpoint: uploadData.tusEndpoint
     });
 
     onProgress?.({ phase: 'uploading', step: 'Uploading video...' });
 
     // Create TUS upload
     const upload = new tus.Upload(file, {
-      endpoint: uploadData.tus.url,
-      retryDelays: [0, 3000, 5000, 10000, 20000],
+      endpoint: uploadData.tusEndpoint,
+      retryDelays: [0, 1000, 2000, 5000, 10000, 20000],
       metadata: {
         filename: filename,
         filetype: blob.type || 'video/webm',
