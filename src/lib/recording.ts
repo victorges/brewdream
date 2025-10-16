@@ -196,7 +196,8 @@ export async function uploadToLivepeer(
   // Step 2: Upload using TUS resumable upload (preferred) or PUT fallback
   const file = new File([blob], filename, { type: blob.type });
 
-  if (uploadData?.tusEndpoint) {
+  let uploaded = false;
+  if (uploadData?.tus?.url) {
     // Use TUS resumable upload
     console.log('Starting TUS upload...', {
       size: blob.size,
@@ -234,19 +235,24 @@ export async function uploadToLivepeer(
       }
     });
 
-    // Start the upload
-    await new Promise<void>((resolve, reject) => {
-      upload.onSuccess = () => {
-        console.log('TUS upload completed successfully');
-        resolve();
-      };
-      upload.onError = (error) => {
-        console.error('TUS upload failed:', error);
-        reject(new Error(`TUS upload failed: ${error.message || 'Unknown error'}`));
-      };
-      upload.start();
-    });
-  } else if (uploadData?.uploadUrl) {
+    try {
+      await new Promise<void>((resolve, reject) => {
+        upload.onSuccess = () => {
+          console.log('TUS upload completed successfully');
+          resolve();
+        };
+        upload.onError = (error) => {
+          console.error('TUS upload failed:', error);
+          reject(new Error(`TUS upload failed: ${error.message || 'Unknown error'}`));
+        };
+        upload.start();
+      });
+      uploaded = true;
+    } catch (error) {
+      console.error('TUS upload failed:', error);
+    }
+  }
+  if (!uploaded && uploadData?.uploadUrl) {
     // Fallback to PUT upload
     console.log('TUS not available, using PUT upload fallback...', {
       size: blob.size,
@@ -270,11 +276,13 @@ export async function uploadToLivepeer(
       console.error('PUT upload failed:', putResponse.status, errorText);
       throw new Error(`Upload failed: ${putResponse.status} - ${errorText}`);
     }
+    uploaded = true;
 
     console.log('PUT upload successful, waiting for asset to be ready...');
     onProgress?.({ phase: 'processing', step: 'Processing video...' });
-  } else {
-    throw new Error('No upload method available (neither TUS nor PUT URL provided)');
+  }
+  if (!uploaded) {
+    throw new Error('Upload failed');
   }
 
   // Step 3: Poll for asset readiness with better error handling
