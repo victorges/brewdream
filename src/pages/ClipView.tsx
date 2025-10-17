@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, RefObject } from 'react';
+import { useEffect, useState, useRef, useMemo, RefObject, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion, useMotionValue, useTransform, PanInfo, animate } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
@@ -32,13 +32,6 @@ interface Clip {
     count: number;
   }[];
 }
-
-interface Ticket {
-  id: string;
-  code: string;
-  redeemed: boolean;
-}
-
 
 export function VideoGlow({
   targetRef,
@@ -116,7 +109,7 @@ export default function ClipView() {
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [viewCount, setViewCount] = useState<number | null>(null);
   const [viewsLoading, setViewsLoading] = useState(true);
-  const [assetStatus, setAssetStatus] = useState<string | undefined>(undefined);
+  const [assetStatus, setAssetStatus] = useState<'processing' | 'ready' | 'error'>('processing');
   const [processingProgress, setProcessingProgress] = useState(0);
   const [assetError, setAssetError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -131,17 +124,162 @@ export default function ClipView() {
   );
 
   useEffect(() => {
-    loadClip();
+    const checkAuth = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setIsAuthenticated(!!user);
+        setCurrentUserId(user?.id || null);
+      } catch (error) {
+        console.error('Error checking auth:', error);
+      }
+    };
     checkAuth();
+  }, []);
+
+  const creationDateStr = useMemo(() => {
+    if (!clip?.created_at) return '';
+    const createdAt = new Date(clip.created_at);
+    const now = new Date();
+    const isSameDay =
+      createdAt.getFullYear() === now.getFullYear() &&
+      createdAt.getMonth() === now.getMonth() &&
+      createdAt.getDate() === now.getDate();
+    return isSameDay
+      ? createdAt.toLocaleTimeString()
+      : createdAt.toLocaleDateString();
+  }, [clip?.created_at]);
+
+  useEffect(() => {
+    if (!clip || assetStatus !== 'ready') return;
+
+    if (!clip.asset_playback_id) {
+      setViewCount(null);
+      return;
+    }
+
+    const loadViewership = async () => {
+      try {
+        setViewsLoading(true);
+
+        const { data, error } = await supabase.functions.invoke('get-viewership', {
+          body: { playbackId: clip.asset_playback_id },
+        });
+
+        if (error) {
+          console.error('Error loading viewership:', error);
+          setViewCount(0);
+        } else {
+          setViewCount(data.viewCount || 0);
+        }
+      } catch (error) {
+        console.error('Error loading viewership:', error);
+        setViewCount(0);
+      } finally {
+        setViewsLoading(false);
+      }
+    }
     loadViewership();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [clip, assetStatus]);
+
+  const fetchClip = useCallback(async (id: string) => {
+    const { data, error } = await supabase
+      .from('clips')
+      .select(`
+        *,
+        likes_count:clip_likes(count)
+      `)
+      .eq('id', id)
+      .single();
+
+    if (error) throw error;
+
+    setClip(data);
+
+    // Extract likes count from the aggregated result
+    const count = data.likes_count?.[0]?.count || 0;
+    setLikesCount(count);
+
+    return data;
+  }, []);
+
+  useEffect(() => {
+    const loadClip = async () => {
+      try {
+        setLoading(true);
+
+        const clip = await fetchClip(id);
+
+        // Check if user owns this clip and if they have a ticket
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: sessionData } = await supabase
+            .from('sessions')
+            .select('user_id, id')
+            .eq('id', clip.session_id)
+            .single();
+
+          if (sessionData) {
+            // Check ownership
+            const ownsClip = sessionData.user_id === user.id;
+            setIsOwner(ownsClip);
+
+            // Only load ticket data if user owns the clip
+            if (ownsClip) {
+              const { data: ticketData } = await supabase
+                .from('tickets')
+                .select('code, redeemed')
+                .eq('session_id', sessionData.id)
+                .maybeSingle();
+
+              if (ticketData) {
+                setTicketCode(ticketData.code);
+                setIsRedeemed(ticketData.redeemed);
+
+                // Start 5-second lock timer only if ticket exists and not redeemed
+                if (!ticketData.redeemed) {
+                  setIsSwipeLocked(true);
+                  setTimeout(() => {
+                    setIsSwipeLocked(false);
+                  }, 5000);
+                }
+              }
+            }
+          }
+
+          // Check if user has liked this clip
+          const { data: likeData } = await supabase
+            .from('clip_likes')
+            .select('id')
+            .eq('clip_id', clip.id)
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          setIsLiked(!!likeData);
+        }
+      } catch (error) {
+        console.error('Error loading clip:', error);
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to load clip',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadClip();
+  }, [id, toast, fetchClip]);
 
   // Poll asset status when processing
   useEffect(() => {
-    if (assetStatus !== 'processing' || !clip?.id) {
+    if (!clip) return;
+
+    // Backward-compat: no raw_uploaded_file_url means clip was created with full asset
+    if (clip.asset_ready || !clip.raw_uploaded_file_url) {
+      setAssetStatus('ready');
       return;
     }
+    setAssetStatus('processing');
 
     console.log('Starting asset status polling for clip:', clip.id);
     let progressCount = 0;
@@ -170,28 +308,23 @@ export default function ClipView() {
           // Update clip in database to mark asset as ready
           const { error: updateError } = await supabase
             .from('clips')
-            .update({ asset_ready: true })
+            .update({ asset_ready: true, download_url: data.downloadUrl })
             .eq('id', clip.id);
 
           if (updateError) {
             console.error('Error updating asset_ready flag:', updateError);
+            return;
           }
+          await fetchClip(clip.id);
 
-          // Update local state
           setAssetStatus('ready');
           setProcessingProgress(100);
-
-          // Reload clip to get updated data
-          await loadClip();
-
-          // Reload viewership now that asset is ready
-          await loadViewership();
 
           toast({
             title: 'Video ready!',
             description: 'Your clip has finished processing',
           });
-        } else if (status === 'failed' || status === 'error' || status === 'deleted') {
+        } else if (status === 'failed' || status === 'deleted') {
           console.error('Asset processing failed:', status, data);
           setAssetStatus('error');
           setAssetError(data?.error?.message || 'Asset processing failed');
@@ -199,7 +332,7 @@ export default function ClipView() {
 
           toast({
             title: 'Processing failed',
-            description: 'Your clip could not be processed',
+            description: data?.error?.message || 'Your clip could not be processed',
             variant: 'destructive',
           });
         }
@@ -213,152 +346,10 @@ export default function ClipView() {
     const interval = setInterval(pollAssetStatus, 1000);
 
     return () => {
-      console.log('Cleaning up asset status polling');
+      console.log('Stopping asset status polling');
       clearInterval(interval);
     };
-  }, [assetStatus, clip?.id, clip?.asset_playback_id, toast]);
-
-  const creationDateStr = useMemo(() => {
-    if (!clip?.created_at) return '';
-    const createdAt = new Date(clip.created_at);
-    const now = new Date();
-    const isSameDay =
-      createdAt.getFullYear() === now.getFullYear() &&
-      createdAt.getMonth() === now.getMonth() &&
-      createdAt.getDate() === now.getDate();
-    return isSameDay
-      ? createdAt.toLocaleTimeString()
-      : createdAt.toLocaleDateString();
-  }, [clip?.created_at]);
-
-  const checkAuth = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      setIsAuthenticated(!!user);
-      setCurrentUserId(user?.id || null);
-    } catch (error) {
-      console.error('Error checking auth:', error);
-    }
-  };
-
-  const loadViewership = async () => {
-    try {
-      if (!id) return;
-
-      const { data: clipData } = await supabase
-        .from('clips')
-        .select('asset_playback_id')
-        .eq('id', id)
-        .single();
-
-      if (!clipData?.asset_playback_id) return;
-
-      const { data, error } = await supabase.functions.invoke('get-viewership', {
-        body: { playbackId: clipData.asset_playback_id },
-      });
-
-      if (error) {
-        console.error('Error loading viewership:', error);
-        setViewCount(0);
-      } else {
-        setViewCount(data.viewCount || 0);
-      }
-    } catch (error) {
-      console.error('Error loading viewership:', error);
-      setViewCount(0);
-    } finally {
-      setViewsLoading(false);
-    }
-  };
-
-  const loadClip = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('clips')
-        .select(`
-          *,
-          likes_count:clip_likes(count)
-        `)
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      setClip(data);
-
-      // Extract likes count from the aggregated result
-      const count = data.likes_count?.[0]?.count || 0;
-      setLikesCount(count);
-
-      // Check if user owns this clip and if they have a ticket
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: sessionData } = await supabase
-          .from('sessions')
-          .select('user_id, id')
-          .eq('id', data.session_id)
-          .single();
-
-        if (sessionData) {
-          // Check ownership
-          const ownsClip = sessionData.user_id === user.id;
-          setIsOwner(ownsClip);
-
-          // Only load ticket data if user owns the clip
-          if (ownsClip) {
-            const { data: ticketData } = await supabase
-              .from('tickets')
-              .select('code, redeemed')
-              .eq('session_id', sessionData.id)
-              .single();
-
-            if (ticketData) {
-              setTicketCode(ticketData.code);
-              setIsRedeemed(ticketData.redeemed);
-
-              // Start 5-second lock timer only if ticket exists and not redeemed
-              if (!ticketData.redeemed) {
-                setIsSwipeLocked(true);
-                setTimeout(() => {
-                  setIsSwipeLocked(false);
-                }, 5000);
-              }
-            }
-          }
-        }
-
-        // Check if user has liked this clip
-        const { data: likeData } = await supabase
-          .from('clip_likes')
-          .select('id')
-          .eq('clip_id', data.id)
-          .eq('user_id', user.id)
-          .single();
-
-        setIsLiked(!!likeData);
-      }
-
-      // Determine asset status based on clip data
-      if (data.asset_ready) {
-        // Asset is already ready, no polling needed
-        setAssetStatus('ready');
-      } else if (data.raw_uploaded_file_url) {
-        // Asset is still processing, start polling
-        setAssetStatus('processing');
-      } else {
-        // No raw URL and not ready - assume ready for backward compatibility
-        setAssetStatus('ready');
-      }
-    } catch (error) {
-      console.error('Error loading clip:', error);
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to load clip',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [clip, toast, fetchClip]);
 
   const handleLike = async () => {
     if (!isAuthenticated || !currentUserId) {
