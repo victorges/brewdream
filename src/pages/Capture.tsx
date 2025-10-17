@@ -49,12 +49,12 @@ export default function Capture() {
   // Transition phases: {idx+1}-{phase}-fade-out for smooth animations (fade-in handled by CSS)
   const [uiPhase, setUiPhase] = useState<
     | "0-camera-selection"
-    | "1-camera-selection-fade-out"
-    | "2-design-brew"
-    | "3-design-brew-fade-out"
-    | "4-stream"
+    | "0-camera-selection-fade-out"
+    | "1-design-brew"
+    | "1-design-brew-fade-out"
+    | "2-stream"
   >(
-    hasMultipleCameras() ? "0-camera-selection" : "2-design-brew"
+    hasMultipleCameras() ? "0-camera-selection" : "1-design-brew"
   );
 
   // Helper function to transition between phases with fade effects
@@ -132,7 +132,7 @@ export default function Capture() {
 
   const selectCamera = useCallback(async (type: "user" | "environment") => {
     setCameraType(type);
-    transitionToPhase("1-camera-selection-fade-out", 300, "2-design-brew");
+    transitionToPhase("0-camera-selection-fade-out", 300, "1-design-brew");
     // Reset prompt for new camera
     setBrewParams((prev) => ({ ...prev, prompt: "" }));
   }, [transitionToPhase]);
@@ -155,7 +155,7 @@ export default function Capture() {
     }
 
     setLoading(false); // Ensure loading is false BEFORE transitioning
-    transitionToPhase("3-design-brew-fade-out", 300, "4-stream");
+    transitionToPhase("1-design-brew-fade-out", 300, "2-stream");
   }, [cameraType, brewParams.prompt, toast, transitionToPhase]);
 
   // Auto-start camera on desktop (non-mobile devices)
@@ -170,8 +170,7 @@ export default function Capture() {
         setAutoStartChecked(true);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStartChecked, loading]);
+  }, [autoStartChecked, loading, selectCamera]);
 
   // DaydreamCanvas abstracts streaming; no local WHIP logic here
 
@@ -601,8 +600,8 @@ export default function Capture() {
   let content;
 
   // Determine base phase and transition state
-  const basePhase = uiPhase.replace(/-fade-out$/, '') as "0-camera-selection" | "2-design-brew" | "4-stream";
   const isFadeOut = uiPhase.includes('-fade-out');
+  const basePhase = uiPhase.replace(/-fade-out$/, '') as "0-camera-selection" | "1-design-brew" | "2-stream";
 
   // Camera selection screen - shown on mobile devices
   if (basePhase === "0-camera-selection") {
@@ -683,7 +682,7 @@ export default function Capture() {
     );
   }
   // Parameter setup screen - shown after camera selection but before stream starts
-  else if (basePhase === "2-design-brew") {
+  else if (basePhase === "1-design-brew") {
     content = (
       <div className={`fixed inset-0 flex flex-col bg-neutral-950 text-neutral-200 transition-opacity duration-300 ${
         isFadeOut ? 'opacity-0' : 'opacity-100'
@@ -728,7 +727,7 @@ export default function Capture() {
         </div>
       </div>
     );
-  } else if (basePhase === "4-stream") {
+  } else if (basePhase === "2-stream") {
     // Main streaming view is now handled by the secret container below
     content = null;
   }
@@ -739,7 +738,7 @@ export default function Capture() {
       {/* Secret streaming container - hidden during setup, visible after */}
       <div
         className={
-          basePhase === "4-stream"
+          basePhase === "2-stream"
             ? `fixed inset-0 flex flex-col bg-neutral-950 text-neutral-200 transition-opacity duration-300 ${
                 isFadeOut ? 'opacity-0' : 'opacity-100'
               }`
