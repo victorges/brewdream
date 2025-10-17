@@ -40,10 +40,19 @@ const hasMultipleCameras = (): boolean => {
 };
 
 export default function Capture() {
+  // Controls the main UI flow through the capture process:
+  // - "0-camera-selection": Initial screen for mobile devices to choose front/back camera
+  // - "1-design-brew": Parameter setup screen where users configure their AI brew settings
+  // - "2-stream": Active streaming phase with live video output and recording controls
+  // Note: The stream is always pre-loading in the background (hidden container) during
+  // phases 0 and 1, then becomes visible when transitioning to phase 2
+  const [uiPhase, setUiPhase] = useState<"0-camera-selection" | "1-design-brew" | "2-stream">(
+    hasMultipleCameras() ? "0-camera-selection" : "1-design-brew"
+  );
+
   const [cameraType, setCameraType] = useState<"user" | "environment" | null>(
     null
   );
-  const [setupComplete, setSetupComplete] = useState(false);
   const [loading, setLoading] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [playbackId, setPlaybackId] = useState<string | null>(null);
@@ -106,15 +115,10 @@ export default function Capture() {
     []
   );
 
-  // We use a separate state to track if we should show camera selection
-  // Only show camera selection screen if there are actually multiple cameras
-  const [showCameraSelection, setShowCameraSelection] = useState(
-    hasMultipleCameras()
-  );
 
   const selectCamera = useCallback(async (type: "user" | "environment") => {
     setCameraType(type);
-    setShowCameraSelection(false); // Hide camera selection screen
+    setUiPhase("1-design-brew"); // Move to design-brew phase
     // Reset prompt for new camera
     setBrewParams((prev) => ({ ...prev, prompt: "" }));
     // Don't start stream yet - wait for user to configure params and hit "Start"
@@ -137,8 +141,8 @@ export default function Capture() {
       return;
     }
 
-    setLoading(false); // Ensure loading is false BEFORE setting setupComplete
-    setSetupComplete(true);
+    setLoading(false); // Ensure loading is false BEFORE setting uiPhase
+    setUiPhase("2-stream");
   }, [cameraType, brewParams.prompt, toast]);
 
   // Auto-start camera on desktop (non-mobile devices)
@@ -584,7 +588,7 @@ export default function Capture() {
   let content;
 
   // Camera selection screen - shown on mobile devices
-  if (showCameraSelection) {
+  if (uiPhase === "0-camera-selection") {
     const showMultipleCameras = hasMultipleCameras();
 
     content = (
@@ -660,7 +664,7 @@ export default function Capture() {
     );
   }
   // Parameter setup screen - shown after camera selection but before stream starts
-  else if (!setupComplete) {
+  else if (uiPhase === "1-design-brew") {
     content = (
       <div className="fixed inset-0 flex flex-col bg-neutral-950 text-neutral-200">
         {/* Header Section */}
@@ -703,7 +707,7 @@ export default function Capture() {
         </div>
       </div>
     );
-  } else {
+  } else if (uiPhase === "2-stream") {
     // Main streaming view is now handled by the secret container below
     content = null;
   }
@@ -714,7 +718,7 @@ export default function Capture() {
       {/* Secret streaming container - hidden during setup, visible after */}
       <div
         className={
-          setupComplete
+          uiPhase === "2-stream"
             ? "fixed inset-0 flex flex-col bg-neutral-950 text-neutral-200"
             : "fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none overflow-hidden"
         }
