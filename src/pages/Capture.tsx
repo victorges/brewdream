@@ -59,10 +59,17 @@ export default function Capture() {
 
   // Helper function to transition between phases with fade effects
   const transitionToPhase = useCallback((intermediate: typeof uiPhase, timeout: number, next: typeof uiPhase) => {
-    setUiPhase(intermediate);
-    setTimeout(() => {
-      setUiPhase(next);
-    }, timeout);
+    setUiPhase(curr => {
+      if (curr === next) {
+        // Skip the intermediate phase transition if we're already at the next phase
+        return next;
+      }
+      // Schedule the next phase transition after the timeout
+      setTimeout(() => {
+        setUiPhase(next);
+      }, timeout);
+      return intermediate;
+    })
   }, []);
 
   const [cameraType, setCameraType] = useState<"user" | "environment" | null>(
