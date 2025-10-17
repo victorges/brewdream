@@ -33,7 +33,8 @@ serve(async (req) => {
       texture_weight,
       t_index_list,
       session_id,
-      raw_uploaded_file_url
+      raw_uploaded_file_url,
+      asset_ready
     } = await req.json();
 
     if (!assetId || !playbackId || !session_id) {
@@ -51,6 +52,8 @@ serve(async (req) => {
       .insert({
         session_id,
         asset_playback_id: playbackId,
+        asset_id: assetId,
+        asset_ready: asset_ready || false,
         asset_url: downloadUrl || null,
         prompt: prompt || 'Untitled',
         duration_ms: durationMs || 0,

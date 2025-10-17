@@ -22,6 +22,7 @@ import { useCinematicVideoGradient } from '@/hooks/useCinematicVideoGradient';
 interface Clip {
   id: string;
   asset_playback_id: string;
+  asset_id?: string; // Backward compatibility as old clips don't have this
   prompt: string;
   duration_ms: number;
   created_at: string;
@@ -286,8 +287,10 @@ export default function ClipView() {
 
     const pollAssetStatus = async () => {
       try {
+        // Use asset_id if available, otherwise fall back to playback_id for backward compatibility
+        const assetId = clip.asset_id || clip.asset_playback_id;
         const { data, error } = await supabase.functions.invoke('studio-asset-status', {
-          body: { assetId: clip.asset_playback_id },
+          body: { assetId },
         });
 
         if (error) {

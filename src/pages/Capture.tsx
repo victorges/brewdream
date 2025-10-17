@@ -45,6 +45,7 @@ const hasMultipleCameras = (): boolean => {
 async function saveClipToDatabase(params: {
   assetId: string;
   playbackId: string;
+  assetReady: boolean;
   downloadUrl?: string;
   rawUploadedFileUrl?: string;
   durationMs: number;
@@ -58,6 +59,7 @@ async function saveClipToDatabase(params: {
     body: {
       assetId: params.assetId,
       playbackId: params.playbackId,
+      asset_ready: params.assetReady,
       downloadUrl: params.downloadUrl,
       raw_uploaded_file_url: params.rawUploadedFileUrl,
       durationMs: params.durationMs,
@@ -337,16 +339,14 @@ export default function Capture() {
   );
 
   // StudioRecorder callback: Handle recording completion
-  const handleRecordingComplete = useCallback(
-    async (result: StudioRecordingResult) => {
+  const saveRecordingToClip = useCallback(
+    async (result: StudioRecordingResult, complete: boolean) => {
       try {
         // Skip if we already saved the clip early (via progress callback)
         if (clipSavedRef.current) {
           console.log("Clip already saved in progress callback, skipping complete handler");
           return;
         }
-
-        console.log("Recording complete, saving to database...", result);
 
         // Get session ID
         const { data: sessionData, error: sessionError } = await supabase
@@ -378,8 +378,9 @@ export default function Capture() {
         const clip = await saveClipToDatabase({
           assetId: result.assetId,
           playbackId: result.playbackId,
-          downloadUrl: result.downloadUrl, // this might be undefined if we're calling from handleUploadDone
-          // TODO: Explicitly set asset_ready here (true if complete, false if uploadDone)
+          // the 2 below are saved from clip page once the asset is ready: downloadUrl and assetReady
+          downloadUrl: complete ? result.downloadUrl : undefined,
+          assetReady: complete ? true : false,
           rawUploadedFileUrl: result.rawUploadedFileUrl,
           durationMs: clampedDuration,
           sessionId: sessionData.id,
@@ -414,6 +415,14 @@ export default function Capture() {
     [streamId, brewParams, canvasParams, navigate, toast]
   );
 
+  const handleRecordingComplete = useCallback(
+    async (result: StudioRecordingResult) => {
+      console.log("Recording complete, saving to database...", result);
+      saveRecordingToClip(result, true);
+    },
+    [saveRecordingToClip]
+  );
+
   // StudioRecorder callback: Handle upload completion and optimistically create clip
   const handleUploadDone = useCallback(
     async (result: StudioRecordingResult) => {
@@ -424,9 +433,9 @@ export default function Capture() {
       }
 
       console.log("Upload complete, saving clip optimistically with raw URL:", result.rawUploadedFileUrl);
-      handleRecordingComplete(result);
+      saveRecordingToClip(result, false);
     },
-    [handleRecordingComplete]
+    [saveRecordingToClip]
   );
 
   // StudioRecorder callback: Handle recording errors

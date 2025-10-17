@@ -45,6 +45,7 @@ export type Database = {
       }
       clips: {
         Row: {
+          asset_id: string
           asset_playback_id: string
           asset_ready: boolean
           asset_url: string | null
@@ -59,6 +60,7 @@ export type Database = {
           texture_weight: number | null
         }
         Insert: {
+          asset_id: string
           asset_playback_id: string
           asset_ready?: boolean
           asset_url?: string | null
@@ -73,6 +75,7 @@ export type Database = {
           texture_weight?: number | null
         }
         Update: {
+          asset_id?: string
           asset_playback_id?: string
           asset_ready?: boolean
           asset_url?: string | null
