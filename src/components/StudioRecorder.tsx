@@ -30,6 +30,7 @@ export interface RecordingResult {
   assetId: string;
   playbackId: string;
   downloadUrl?: string;
+  rawUploadedFileUrl?: string;
   durationMs: number;
 }
 
@@ -37,6 +38,9 @@ export interface UploadProgress {
   phase: 'recording' | 'uploading' | 'processing' | 'complete';
   step?: string;
   progress?: number;
+  rawUploadedFileUrl?: string;
+  assetId?: string;
+  playbackId?: string;
 }
 
 export const StudioRecorder = forwardRef<StudioRecorderHandle, StudioRecorderProps>(
@@ -136,7 +140,7 @@ export const StudioRecorder = forwardRef<StudioRecorderHandle, StudioRecorderPro
         // Upload to Livepeer Studio with progress tracking
         onProgress?.({ phase: 'uploading', step: 'Uploading...' });
 
-        const { assetId, playbackId, downloadUrl } = await uploadToLivepeer(
+        const { assetId, playbackId, downloadUrl, rawUploadedFileUrl } = await uploadToLivepeer(
           blob,
           filename,
           (progress) => {
@@ -145,7 +149,7 @@ export const StudioRecorder = forwardRef<StudioRecorderHandle, StudioRecorderPro
           }
         );
 
-        console.log('StudioRecorder: Upload complete', { assetId, playbackId, downloadUrl });
+        console.log('StudioRecorder: Upload complete', { assetId, playbackId, downloadUrl, rawUploadedFileUrl });
 
         // Notify completion with asset info
         onProgress?.({ phase: 'complete', step: 'Complete!', progress: 100 });
@@ -153,6 +157,7 @@ export const StudioRecorder = forwardRef<StudioRecorderHandle, StudioRecorderPro
           assetId,
           playbackId,
           downloadUrl,
+          rawUploadedFileUrl,
           durationMs,
         });
       } catch (error) {

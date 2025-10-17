@@ -32,7 +32,8 @@ serve(async (req) => {
       texture_id,
       texture_weight,
       t_index_list,
-      session_id
+      session_id,
+      raw_uploaded_file_url
     } = await req.json();
 
     if (!assetId || !playbackId || !session_id) {
@@ -56,6 +57,7 @@ serve(async (req) => {
         texture_id: texture_id || null,
         texture_weight: texture_weight || null,
         t_index_list: t_index_list || null,
+        raw_uploaded_file_url: raw_uploaded_file_url || null,
       })
       .select()
       .single();

@@ -26,6 +26,8 @@ interface Clip {
   duration_ms: number;
   created_at: string;
   session_id: string;
+  raw_uploaded_file_url?: string | null;
+  asset_ready: boolean;
   likes_count?: {
     count: number;
   }[];
@@ -114,6 +116,9 @@ export default function ClipView() {
   const [isRedeeming, setIsRedeeming] = useState(false);
   const [viewCount, setViewCount] = useState<number | null>(null);
   const [viewsLoading, setViewsLoading] = useState(true);
+  const [assetStatus, setAssetStatus] = useState<string | undefined>(undefined);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  const [assetError, setAssetError] = useState<string | null>(null);
   const { toast } = useToast();
   const coffeeCardRef = useRef<HTMLDivElement | null>(null);
   const swipeX = useMotionValue(0);
@@ -131,6 +136,87 @@ export default function ClipView() {
     loadViewership();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // Poll asset status when processing
+  useEffect(() => {
+    if (assetStatus !== 'processing' || !clip?.id) {
+      return;
+    }
+
+    console.log('Starting asset status polling for clip:', clip.id);
+    let progressCount = 0;
+
+    const pollAssetStatus = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('studio-asset-status', {
+          body: { assetId: clip.asset_playback_id },
+        });
+
+        if (error) {
+          console.error('Error checking asset status:', error);
+          return;
+        }
+
+        const status = data?.status;
+        console.log('Asset status poll result:', status, data);
+
+        // Update progress (increment 1% per check, cap at 95%)
+        progressCount++;
+        setProcessingProgress(Math.min(progressCount, 95));
+
+        if (status === 'ready') {
+          console.log('Asset is ready! Updating database and UI...');
+
+          // Update clip in database to mark asset as ready
+          const { error: updateError } = await supabase
+            .from('clips')
+            .update({ asset_ready: true })
+            .eq('id', clip.id);
+
+          if (updateError) {
+            console.error('Error updating asset_ready flag:', updateError);
+          }
+
+          // Update local state
+          setAssetStatus('ready');
+          setProcessingProgress(100);
+
+          // Reload clip to get updated data
+          await loadClip();
+
+          // Reload viewership now that asset is ready
+          await loadViewership();
+
+          toast({
+            title: 'Video ready!',
+            description: 'Your clip has finished processing',
+          });
+        } else if (status === 'failed' || status === 'error' || status === 'deleted') {
+          console.error('Asset processing failed:', status, data);
+          setAssetStatus('error');
+          setAssetError(data?.error?.message || 'Asset processing failed');
+          setViewCount(null);
+
+          toast({
+            title: 'Processing failed',
+            description: 'Your clip could not be processed',
+            variant: 'destructive',
+          });
+        }
+      } catch (error) {
+        console.error('Error polling asset status:', error);
+      }
+    };
+
+    // Poll immediately and then every second
+    pollAssetStatus();
+    const interval = setInterval(pollAssetStatus, 1000);
+
+    return () => {
+      console.log('Cleaning up asset status polling');
+      clearInterval(interval);
+    };
+  }, [assetStatus, clip?.id, clip?.asset_playback_id, toast]);
 
   const creationDateStr = useMemo(() => {
     if (!clip?.created_at) return '';
@@ -249,6 +335,18 @@ export default function ClipView() {
           .single();
 
         setIsLiked(!!likeData);
+      }
+
+      // Determine asset status based on clip data
+      if (data.asset_ready) {
+        // Asset is already ready, no polling needed
+        setAssetStatus('ready');
+      } else if (data.raw_uploaded_file_url) {
+        // Asset is still processing, start polling
+        setAssetStatus('processing');
+      } else {
+        // No raw URL and not ready - assume ready for backward compatibility
+        setAssetStatus('ready');
       }
     } catch (error) {
       console.error('Error loading clip:', error);
@@ -526,15 +624,27 @@ export default function ClipView() {
               animate={{ opacity: 1 }}
               transition={{ duration: 0.4 }}
             >
-              <PlayerWithControls
-                src={[{
-                  src: `https://vod-cdn.lp-playback.studio/raw/jxf4iblf6wlsyor6526t4tcmtmqa/catalyst-vod-com/hls/${clip.asset_playback_id}/static512p0.mp4`,
-                  type: "video",
-                  mime: "video/mp4",
-                  width: 500,
-                  height: 500,
-                }]}
-              />
+              {assetStatus === 'processing' && clip.raw_uploaded_file_url ? (
+                // Raw video element for processing state
+                <video
+                  src={clip.raw_uploaded_file_url}
+                  controls
+                  autoPlay
+                  loop
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                // Existing PlayerWithControls for ready state
+                <PlayerWithControls
+                  src={[{
+                    src: `https://vod-cdn.lp-playback.studio/raw/jxf4iblf6wlsyor6526t4tcmtmqa/catalyst-vod-com/hls/${clip.asset_playback_id}/static512p0.mp4`,
+                    type: "video",
+                    mime: "video/mp4",
+                    width: 500,
+                    height: 500,
+                  }]}
+                />
+              )}
             </motion.div>
           </div>
 
@@ -543,8 +653,8 @@ export default function ClipView() {
             className="
               relative z-20
               space-y-6 bg-neutral-950 p-8
-              lg:sticky lg:top-16              
-              lg:h-[calc(100dvh-64px)] 
+              lg:sticky lg:top-16
+              lg:h-[calc(100dvh-64px)]
               lg:overflow-y-auto
               rounded-t-3xl md:rounded-t-none
             "
@@ -559,8 +669,13 @@ export default function ClipView() {
               <h1 className="mb-3 text-3xl font-bold text-foreground">{clip.prompt}</h1>
               <p className="text-muted-foreground">
                 Duration: {(clip.duration_ms / 1000).toFixed(1)}s • Created: {creationDateStr}
-
               </p>
+              {assetStatus === 'error' && (
+                <p className="text-red-500 text-sm flex items-center gap-2 mt-2">
+                  <AlertCircle className="w-4 h-4" />
+                  Warning: Asset could not be created on Studio
+                </p>
+              )}
             </motion.div>
 
             {/* Actions */}
@@ -575,10 +690,22 @@ export default function ClipView() {
                 {likesCount}
               </Button>
 
-              <Button variant="outline" className="gap-2 bg-transparent">
-                <Eye className="h-5 w-5" />
-                {viewsLoading ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : viewCount}
-              </Button>
+              {assetStatus === 'processing' ? (
+                <Button variant="outline" className="gap-2 bg-transparent" disabled>
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  {processingProgress}%
+                </Button>
+              ) : assetStatus === 'error' ? (
+                <Button variant="outline" className="gap-2 bg-transparent" disabled>
+                  <Eye className="h-5 w-5" />
+                  -
+                </Button>
+              ) : (
+                <Button variant="outline" className="gap-2 bg-transparent">
+                  <Eye className="h-5 w-5" />
+                  {viewsLoading ? <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /> : viewCount}
+                </Button>
+              )}
 
               <Button variant="outline" onClick={shareToTwitter} className="gap-2 bg-transparent">
                 <Share2 className="h-5 w-5" />
@@ -614,11 +741,11 @@ export default function ClipView() {
                         dragConstraints={{ left: 0, right: 0 }}
                         dragElastic={0.2}
                         onDragEnd={handleDragEnd}
-                        style={{ 
-                          x: swipeX, 
-                          opacity, 
-                          scale, 
-                          rotate, 
+                        style={{
+                          x: swipeX,
+                          opacity,
+                          scale,
+                          rotate,
                           y,
                           boxShadow: shadow,
                           transformStyle: "preserve-3d",
@@ -724,7 +851,7 @@ export default function ClipView() {
                         </Button>
                       </div>
 
-                
+
                     </motion.div>
                   ) : (
                     /* Generate Ticket Button */

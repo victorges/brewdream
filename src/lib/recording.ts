@@ -6,6 +6,11 @@ import { supabase } from '@/integrations/supabase/client';
 import fixWebmDuration from 'fix-webm-duration';
 import * as tus from 'tus-js-client';
 
+// Extend HTMLVideoElement to include captureStream method
+interface HTMLVideoElementWithCapture extends HTMLVideoElement {
+  captureStream?: () => MediaStream;
+}
+
 interface RecordingResult {
   blob: Blob;
   durationMs: number;
@@ -16,12 +21,16 @@ interface UploadResult {
   assetId: string;
   playbackId: string;
   downloadUrl?: string;
+  rawUploadedFileUrl?: string;
 }
 
 interface UploadProgress {
   phase: string;
   step?: string;
   progress?: number;
+  rawUploadedFileUrl?: string;
+  assetId?: string;
+  playbackId?: string;
 }
 
 /**
@@ -40,7 +49,7 @@ export class VideoRecorder {
    */
   async start(): Promise<void> {
     // Capture stream from video element
-    const stream = (this.videoElement as any).captureStream?.();
+    const stream = (this.videoElement as HTMLVideoElementWithCapture).captureStream?.();
 
     if (!stream) {
       throw new Error('captureStream is not supported on this video element');
@@ -162,7 +171,7 @@ export class VideoRecorder {
    * Check if captureStream is supported
    */
   static isSupported(videoElement: HTMLVideoElement): boolean {
-    return typeof (videoElement as any).captureStream === 'function';
+    return typeof (videoElement as HTMLVideoElementWithCapture).captureStream === 'function';
   }
 }
 
@@ -228,7 +237,13 @@ export async function uploadToLivepeer(
           },
           onSuccess: () => {
             console.log('TUS upload completed successfully');
-            onProgress?.({ phase: 'processing', step: 'Processing video...' });
+            onProgress?.({
+              phase: 'processing',
+              step: 'Processing video...',
+              rawUploadedFileUrl: uploadData.rawUploadedFileUrl,
+              assetId: uploadData.assetId,
+              playbackId: uploadData.playbackId
+            });
             resolve();
           },
           onError: (error) => {
@@ -271,7 +286,13 @@ export async function uploadToLivepeer(
     uploaded = true;
 
     console.log('PUT upload successful, waiting for asset to be ready...');
-    onProgress?.({ phase: 'processing', step: 'Processing video...' });
+    onProgress?.({
+      phase: 'processing',
+      step: 'Processing video...',
+      rawUploadedFileUrl: uploadData.rawUploadedFileUrl,
+      assetId: uploadData.assetId,
+      playbackId: uploadData.playbackId
+    });
   }
   if (!uploaded) {
     throw new Error('Upload failed');
@@ -341,6 +362,7 @@ export async function uploadToLivepeer(
     assetId: uploadData.assetId,
     playbackId: assetData.playbackId!,
     downloadUrl: assetData.downloadUrl,
+    rawUploadedFileUrl: uploadData.rawUploadedFileUrl,
   };
 }
 
@@ -351,6 +373,7 @@ export async function saveClipToDatabase(params: {
   assetId: string;
   playbackId: string;
   downloadUrl?: string;
+  rawUploadedFileUrl?: string;
   durationMs: number;
   sessionId: string;
   prompt?: string;
@@ -363,6 +386,7 @@ export async function saveClipToDatabase(params: {
       assetId: params.assetId,
       playbackId: params.playbackId,
       downloadUrl: params.downloadUrl,
+      raw_uploaded_file_url: params.rawUploadedFileUrl,
       durationMs: params.durationMs,
       session_id: params.sessionId,
       prompt: params.prompt,
