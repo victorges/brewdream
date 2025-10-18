@@ -974,10 +974,7 @@ export default function Capture() {
                 <Button
                   onClick={() => {
                     const newCamera = cameraType === "user" ? "environment" : "user";
-                    // Stop current stream and switch camera
-                    setPlaybackId(null);
-                    setPlaybackUrl(null);
-                    setStreamId(null);
+                    // Let DaydreamCanvas handle the camera switch
                     setCameraType(newCamera);
                   }}
                   disabled={!playbackId || recording || uploadingClip}
