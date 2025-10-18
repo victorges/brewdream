@@ -54,7 +54,7 @@
 | Auth implementation | `docs/ANONYMOUS_AUTH.md` |
 | Local download toggle | `docs/LOCAL_DOWNLOAD_TOGGLE.md` |
 | Core stream logic | `src/lib/daydream.ts` |
-| Core recording logic | `src/lib/recording.ts` |
+| Core recording logic | `src/components/StudioRecorder.tsx` |
 | Main capture UI | `src/pages/Capture.tsx` |
 | Edge functions | `supabase/functions/` |
 | Database schema | `supabase/migrations/` |
@@ -92,10 +92,9 @@ Camera → WebRTC → Daydream Stream (AI effects) → Livepeer (HLS playback)
 - `pages/` - Route components (Capture, ClipView, Index, NotFound)
 - `components/` - Reusable UI (Gallery, Landing, Login) + shadcn/ui library
   - `DaydreamCanvas.tsx` - Manages camera input, WHIP publishing to Daydream
-  - `StudioRecorder.tsx` - Wraps any video/canvas element, handles recording → Livepeer upload
+  - `StudioRecorder.tsx` - Canvas-based video recording component → Livepeer upload
 - `lib/` - **Core utilities** (where the magic happens):
   - `daydream.ts` - Stream creation, WHIP publishing, prompt updates
-  - `recording.ts` - Video capture (VideoRecorder class), Livepeer upload, database save
 - `integrations/supabase/` - Database client & generated types
 - `hooks/` - React hooks (use-mobile, use-toast)
 
@@ -171,6 +170,7 @@ These are **non-negotiable** technical requirements:
 
 **Key Implementation Files**:
 - `src/lib/daydream.ts` - Stream creation, WHIP, prompt updates
+- `src/components/StudioRecorder.tsx` - Canvas-based recording, Livepeer upload
 - `src/pages/Capture.tsx` - UI orchestration
 - `supabase/functions/daydream-*` - API proxies
 
@@ -284,7 +284,10 @@ Two modes: **Anonymous** (instant access) + **Email OTP** (for coffee tickets)
 - **Duration enforcement**: 3-10s (auto-stop at 10s, cancel if <3s)
 - **Real-time feedback**: Counter updates every 100ms, button states reflect stream status
 - **What gets recorded**: AI-processed output from Livepeer Player (not original camera feed)
-- **How**: `videoElement.captureStream()` → `MediaRecorder` → WebM blob
+- **How**: Canvas-based recording (consistent across all browsers):
+  - Video frames copied to offscreen canvas at 30fps
+  - `canvas.captureStream(30)` → `MediaRecorder` → WebM blob
+  - Audio tracks extracted from video's MediaStream
 
 **Full Details**: See [`docs/RECORDING_IMPLEMENTATION.md`](./docs/RECORDING_IMPLEMENTATION.md)
 
@@ -431,20 +434,21 @@ await studioRecorderRef.current?.stopRecording();
 **Low-Level Flow** (used internally by StudioRecorder):
 
 ```typescript
-// Direct usage of recording.ts utilities
+// VideoRecorder uses canvas-based recording for all browsers
 const recorder = new VideoRecorder(videoElement);
-await recorder.start();
+await recorder.start(); // Creates canvas, copies frames at 30fps, captures stream
 const { blob, durationMs } = await recorder.stop();
 const { assetId, playbackId } = await uploadToLivepeer(blob);
 await saveClipToDatabase({ assetId, playbackId, ... });
 ```
 
-**Key Quirks**:
-- `StudioRecorder` wraps any content with video/canvas elements inside
-- Uses `captureStream()` on `<video>` or `<canvas>` elements
-- Supports both Livepeer Player and native video/canvas elements
+**Key Implementation Details**:
+- `StudioRecorder` wraps any content with video elements inside
+- **Canvas-based recording**: Always copies video frames to offscreen canvas at 30fps
+- Uses `canvas.captureStream(30)` for consistent cross-browser compatibility
+- Extracts audio tracks from video's MediaStream and adds to canvas stream
 - Front camera mirroring at source (canvas-based) before Daydream, not CSS
-- Records AI output, not camera feed
+- Records AI output from Player, not original camera feed
 - Desktop: click-toggle, Mobile: press-hold (UX choice)
 - Parent manages duration enforcement (3-10s), StudioRecorder only handles recording/upload
 
@@ -584,7 +588,7 @@ navigate('/path');
 4. **Public Access**: All RLS policies allow public reads for clips/sessions
 5. **No Auth Required**: Edge functions have `verify_jwt: false` for simplicity
 6. **Single Stream**: User can only have one active stream at a time
-7. **Browser Recording**: Requires `captureStream()` support (Chrome/Edge/Firefox/Safari modern versions)
+7. **Browser Recording**: Requires `canvas.captureStream()` support (all modern browsers: Chrome/Edge/Firefox/Safari 14.1+)
 8. **Video Element Access**: Must use Livepeer Player component (not iframe) for recording
 
 ## 🐛 Known Issues & Workarounds
@@ -770,7 +774,7 @@ navigate('/path');
 → Read `docs/DAYDREAM_API_GUIDE.md` → Check `src/lib/daydream.ts` → Verify edge function logs
 
 **"Understand recording flow"**:
-→ Read `docs/RECORDING_IMPLEMENTATION.md` → Check `src/lib/recording.ts`
+→ Read `docs/RECORDING_IMPLEMENTATION.md` → Check `src/components/StudioRecorder.tsx`
 
 ## 🌟 Project Vibe
 
@@ -835,7 +839,7 @@ Avoid:
 - Live output (1:1 square) with PiP source preview via Livepeer Player SDK v4
 - WebRTC playback uses header-provided URL (no HLS/getSrc)
 - Prompt, Texture+Weight, Intensity, Quality controls with debounced updates
-- Recording with `captureStream()` + `MediaRecorder` (3-10s duration enforcement)
+- Canvas-based recording: video frames → canvas → `canvas.captureStream(30)` → `MediaRecorder` (3-10s duration enforcement)
 - Desktop (click toggle) vs Mobile (press & hold) recording mechanics
 - Real-time recording counter (100ms updates)
 - Auto-stop at 10s, cancel if <3s
@@ -860,9 +864,15 @@ Avoid:
 - Email delivery of ticket (function exists but integration TBD)
 
 **Deviations from PRD (📝):**
-- **Recording method**: Browser-side `captureStream()` + `MediaRecorder` instead of Livepeer Create Clip API
-  - **Rationale**: More reliable across network conditions, captures exact rendered frames, works with WebRTC-only playback
-  - **Trade-off**: Requires browser support for captureStream (widely supported in modern browsers)
+- **Recording method**: Canvas-based recording for all browsers (not just for mirroring)
+  - **PRD approach**: Direct `HTMLMediaElement.captureStream()` on video element (with canvas only for front camera mirroring)
+  - **Current implementation**: Always use canvas-based recording - copy video frames to offscreen canvas at 30fps → `canvas.captureStream(30)` → `MediaRecorder`
+  - **Rationale**: 
+    - Consistent behavior across all browsers (no fallback logic needed)
+    - Works reliably on Safari/iOS where direct video `captureStream()` fails on WebRTC streams
+    - Simpler, more maintainable code with single implementation path
+    - Captures exact rendered frames with WebRTC-only playback
+  - **Trade-off**: Requires `canvas.captureStream()` support (Safari 14.1+, all modern browsers)
 - **Playback src**: Use `livepeer-playback-url` from WHIP response headers
   - **Rationale**: Faster startup via MediaMTX; consistent low-latency WebRTC
 - **Recording mechanics**: Different behavior for desktop vs mobile
