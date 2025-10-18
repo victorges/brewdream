@@ -108,7 +108,10 @@ export function Login() {
       // Always send magic link for passwordless sign-in
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { shouldCreateUser: true },
+        options: { 
+          shouldCreateUser: true,
+          emailRedirectTo: `${window.location.origin}/login`,
+        },
       });
       if (error) throw error;
 
@@ -132,7 +135,10 @@ export function Login() {
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
-        options: { shouldCreateUser: true },
+        options: { 
+          shouldCreateUser: true,
+          emailRedirectTo: `${window.location.origin}/login`,
+        },
       });
       if (error) throw error;
       
@@ -151,69 +157,21 @@ export function Login() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === "SIGNED_IN" && session?.user) {
         const wasAnonymous = (session.user as any)?.is_anonymous || false;
-        
-        // For non-anonymous users, ensure user record exists in database before proceeding
         if (!wasAnonymous) {
-          try {
-            // First, try to get existing user
-            const { data: existingUser, error: fetchError } = await supabase
-              .from("users")
-              .select("id")
-              .eq("id", session.user.id)
-              .single();
-            
-            // If user doesn't exist, create it
-            if (fetchError || !existingUser) {
-              const { error: insertError } = await supabase
-                .from("users")
-                .insert({ 
-                  id: session.user.id, 
-                  email: session.user.email,
-                  email_verified: true 
-                });
-              
-              if (insertError) {
-                // If insert fails due to conflict, try upsert as fallback
-                const { error: upsertError } = await supabase
-                  .from("users")
-                  .upsert({ 
-                    id: session.user.id, 
-                    email: session.user.email,
-                    email_verified: true 
-                  }, { onConflict: "id" });
-                
-                if (upsertError) {
-                  console.error("Failed to save user data on auth change:", upsertError);
-                  toast({
-                    title: "Error",
-                    description: "Logged in but couldn't save user data. Please try again.",
-                    variant: "destructive"
-                  });
-                  return;
-                }
-              }
-            } else {
-              // User exists, just update email_verified if needed
-              const { error: updateError } = await supabase
-                .from("users")
-                .update({ email_verified: true })
-                .eq("id", session.user.id);
-              
-              if (updateError) {
-                console.warn("Failed to update email_verified flag:", updateError);
-              }
-            }
-          } catch (error) {
-            console.error("Error ensuring user exists:", error);
+          // Ensure user entry exists in database before navigating
+          const { error: upsertError } = await supabase
+            .from("users")
+            .upsert({ id: session.user.id, email: session.user.email }, { onConflict: "id" });
+          if (upsertError) {
+            console.error("Failed to save user data on auth change:", upsertError);
             toast({
               title: "Error",
-              description: "Failed to set up user account. Please try again.",
+              description: "Logged in but couldn't save user data. Please try again.",
               variant: "destructive"
             });
             return;
           }
         }
-        
         toast({
           title: "Success!",
           description: "Logged in successfully",
