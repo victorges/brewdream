@@ -89,8 +89,8 @@ export function Login() {
       } = await supabase.auth.getSession();
       const currentUserId = session?.user?.id;
 
-      // Check if email already exists (for anonymous users upgrading)
-      if (currentUserId) {
+      // Check if email already exists (warn anonymous users they'll switch accounts)
+      if (currentUserId && isAnonymous) {
         const { data: existingUser } = await supabase
           .from("users")
           .select("id")
@@ -101,23 +101,16 @@ export function Login() {
           toast({
             title: "Email already exists",
             description: "There is another account with this email. You'll switch to that account with the magic link we just sent you.",
-            variant: "destructive"
           });
         }
       }
 
-      if (isAnonymous && currentUserId) {
-        // Link email to the existing anonymous account
-        const { error: updateError } = await supabase.auth.updateUser({ email });
-        if (updateError) throw updateError;
-      } else {
-        // Send magic link for passwordless sign-in
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { shouldCreateUser: true },
-        });
-        if (error) throw error;
-      }
+      // Always send magic link for passwordless sign-in
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true },
+      });
+      if (error) throw error;
 
       setEmailSent(true);
       startResendCooldown(60);
@@ -137,16 +130,12 @@ export function Login() {
   const handleResend = async () => {
     if (resendCooldown > 0 || !email) return;
     try {
-      if (isAnonymous) {
-        const { error } = await supabase.auth.updateUser({ email });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { shouldCreateUser: true },
-        });
-        if (error) throw error;
-      }
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: { shouldCreateUser: true },
+      });
+      if (error) throw error;
+      
       setJustResent(true);
       startResendCooldown(60);
       setTimeout(() => setJustResent(false), 900);
@@ -178,7 +167,7 @@ export function Login() {
         }
         toast({
           title: "Success!",
-          description: wasAnonymous ? "Email added to your account" : "Logged in successfully",
+          description: "Logged in successfully",
         });
         navigate("/capture");
       }
