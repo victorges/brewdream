@@ -675,13 +675,53 @@ export default function Capture() {
       setPlaybackId(pid);
       setPlaybackUrl(purl || null);
       setLoading(false);
-      // Ensure session exists
+      
+      // Get current user
       const {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Map UI cameraType ('user'|'environment') to DB enum ('front'|'back')
+      // Ensure user exists in users table before creating session
+      // This is a defensive check in case the user record wasn't created during login
+      try {
+        const { data: existingUser, error: fetchError } = await supabase
+          .from("users")
+          .select("id")
+          .eq("id", user.id)
+          .single();
+        
+        if (fetchError || !existingUser) {
+          console.log("User not found in database, creating user record...");
+          const { error: insertError } = await supabase
+            .from("users")
+            .insert({ 
+              id: user.id, 
+              email: user.email,
+              email_verified: !!user.email 
+            });
+          
+          if (insertError) {
+            console.error("Failed to create user record:", insertError);
+            toast({
+              title: "Error",
+              description: "Failed to create user account. Please refresh and try again.",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+      } catch (error) {
+        console.error("Error checking/creating user:", error);
+        toast({
+          title: "Error",
+          description: "Failed to verify user account. Please refresh and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Now create session - user is guaranteed to exist
       const sessionObj = {
         user_id: user.id,
         stream_id: sid,
