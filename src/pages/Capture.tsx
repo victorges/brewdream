@@ -94,14 +94,6 @@ const readBrewParamsFromQuery = (searchParams: URLSearchParams): BrewParams => {
   };
 };
 
-// Read camera type from query string
-const readCameraTypeFromQuery = (searchParams: URLSearchParams): "user" | "environment" | null => {
-  const camera = searchParams.get("camera");
-  if (camera === "front" || camera === "user") return "user";
-  if (camera === "back" || camera === "environment") return "environment";
-  return null;
-};
-
 export default function Capture() {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -112,15 +104,27 @@ export default function Capture() {
   // Note: The stream is always pre-loading in the background (hidden container) during
   // phases 0 and 1, then becomes visible when transitioning to phase 2
   // Transition phases: {idx+1}-{phase}-fade-out for smooth animations (fade-in handled by CSS)
+  // Determine initial UI phase based on query string and device
+  const initialUiPhase = (() => {
+    const camera = searchParams.get("camera");
+    const hasValidCamera = camera === "user" || camera === "environment";
+    
+    // If there's a valid camera in query string, skip to design brew phase
+    if (hasValidCamera) {
+      return "1-design-brew";
+    }
+    
+    // Otherwise, show camera selection on mobile, design brew on desktop
+    return hasMultipleCameras() ? "0-camera-selection" : "1-design-brew";
+  })();
+
   const [uiPhase, setUiPhase] = useState<
     | "0-camera-selection"
     | "0-camera-selection-fade-out"
     | "1-design-brew"
     | "1-design-brew-fade-out"
     | "2-stream"
-  >(
-    hasMultipleCameras() ? "0-camera-selection" : "1-design-brew"
-  );
+  >(initialUiPhase);
 
   // Helper function to transition between phases with fade effects
   const transitionToPhase = useCallback((intermediate: typeof uiPhase, timeout: number, next: typeof uiPhase) => {
@@ -137,9 +141,14 @@ export default function Capture() {
     })
   }, []);
 
-  const [cameraType, setCameraType] = useState<"user" | "environment" | null>(
-    () => readCameraTypeFromQuery(searchParams)
-  );
+  // Read camera type from query string - only accept exact internal values
+  const [cameraType, setCameraType] = useState<"user" | "environment" | null>(() => {
+    const camera = searchParams.get("camera");
+    if (camera === "user" || camera === "environment") {
+      return camera;
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
   const [playbackId, setPlaybackId] = useState<string | null>(null);
@@ -628,9 +637,9 @@ export default function Capture() {
   useEffect(() => {
     const newParams = new URLSearchParams();
     
-    // Add camera type to query string
+    // Add camera type to query string (using exact internal values)
     if (cameraType) {
-      newParams.set("camera", cameraType === "user" ? "front" : "back");
+      newParams.set("camera", cameraType);
     }
     
     // Only add params that have non-default values
