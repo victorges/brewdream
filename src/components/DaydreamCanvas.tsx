@@ -736,7 +736,16 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
           ...(params || {}),
         };
 
-        const streamData = await createDaydreamStream(initialParams);
+        let pipelineId: string;
+        if (initialParams.model_id === 'stabilityai/sdxl-turbo') {
+          pipelineId = initialParams.ip_adapter?.type === 'faceid' ? 'pip_SDXL-turbo-faceid' : 'pip_SDXL-turbo';
+        } else if (initialParams.model_id === 'stabilityai/sd-turbo') {
+          pipelineId = 'pip_SD-turbo';
+        } else {
+          pipelineId = 'pip_SD15';
+        }
+
+        const streamData = await createDaydreamStream(pipelineId, initialParams);
         streamIdRef.current = streamData.id;
         playbackIdRef.current = streamData.output_playback_id;
 
