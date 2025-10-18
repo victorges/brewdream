@@ -5,17 +5,16 @@ import React, {
   useCallback,
   useState,
 } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import {
   createDaydreamStream,
+  updateDaydreamPrompts,
+  StreamDiffusionParams,
 } from '@/lib/daydream';
-import type { StreamDiffusionParams } from '@/lib/daydream';
-import prompts from '@/components/prompts';
 
 // Default stream diffusion parameters
 const DEFAULT_STREAM_DIFFUSION_PARAMS = {
   model_id: 'stabilityai/sdxl-turbo',
-  prompt: prompts.default[0],
+  prompt: "psychedelia",
   negative_prompt: 'blurry, low quality, flat, 2d, distorted',
   num_inference_steps: 50,
   seed: 42,
@@ -686,20 +685,12 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
       // Snapshot latest for eventual consistency; always include required defaults
       const latest = latestParamsRef.current || next;
 
-      const body = {
-        streamId,
-        params: {
+      try {
+        // Use the new updateDaydreamPrompts function
+        await updateDaydreamPrompts(streamId, {
           ...DEFAULT_STREAM_DIFFUSION_PARAMS,
           ...latest,
-        },
-      };
-
-      try {
-        // Call edge function directly to avoid library-level defaults
-        const { error } = await supabase.functions.invoke('daydream-prompt', {
-          body,
         });
-        if (error) throw error;
       } catch (e) {
         console.error('[DaydreamCanvas] Params update failed:', e);
         onError?.(e);

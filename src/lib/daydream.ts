@@ -64,3 +64,26 @@ export async function createDaydreamStream(pipelineId: string, initialParams?: S
   return data as DaydreamStream;
 }
 
+/**
+ * Update StreamDiffusion prompts for a stream
+ * Sends the full params object as required by Daydream API
+ */
+export async function updateDaydreamPrompts(
+  streamId: string,
+  params: StreamDiffusionParams
+): Promise<void> {
+  console.log('[DAYDREAM] Updating stream', streamId, 'with params:', JSON.stringify(params, null, 2));
+
+  const { data, error } = await supabase.functions.invoke('daydream-prompt', {
+    body: {
+      streamId,
+      params
+    }
+  });
+
+  if (error) {
+    console.error('[DAYDREAM] Error updating prompts:', error);
+    throw error;
+  }
+}
+
