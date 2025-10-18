@@ -58,7 +58,7 @@ interface RecordedBlob {
 
 /**
  * Start recording from a video element using MediaRecorder
- * 
+ *
  * Uses canvas-based recording for consistent behavior across all browsers.
  * This approach works reliably on Chrome, Firefox, Safari (desktop & iOS).
  */
@@ -79,45 +79,45 @@ class VideoRecorder {
   async start(): Promise<void> {
     // Always use canvas-based recording for consistency across all browsers
     console.log('Starting canvas-based recording');
-    
+
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { alpha: false });
-    
+
     if (!ctx) {
       throw new Error('Failed to create canvas context for recording');
     }
-    
+
     // Set canvas size to match video
     canvas.width = this.videoElement.videoWidth || 512;
     canvas.height = this.videoElement.videoHeight || 512;
-    
+
     console.log('Canvas recording size:', canvas.width, 'x', canvas.height);
-    
+
     this.canvas = canvas;
     this.canvasContext = ctx;
-    
+
     // Function to copy video frame to canvas
     const copyFrame = () => {
       if (!this.canvas || !this.canvasContext) return;
-      
+
       try {
         // Copy current video frame to canvas
         this.canvasContext.drawImage(this.videoElement, 0, 0, canvas.width, canvas.height);
-        
+
         // Schedule next frame
         this.frameAnimationId = requestAnimationFrame(copyFrame);
       } catch (err) {
         console.error('Error copying video frame to canvas:', err);
       }
     };
-    
+
     // Start copying frames
     copyFrame();
-    
+
     // Capture stream from canvas (video only)
     const canvasStream = canvas.captureStream(30); // 30 fps
     console.log('Canvas stream created with', canvasStream.getTracks().length, 'video tracks');
-    
+
     // Try to get audio from the video element if available
     try {
       // Extract audio tracks from video's MediaStream
@@ -133,7 +133,7 @@ class VideoRecorder {
     } catch (err) {
       console.warn('Could not extract audio tracks from video element:', err);
     }
-    
+
     const stream = canvasStream;
 
     if (!stream) {
