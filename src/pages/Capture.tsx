@@ -174,10 +174,17 @@ export default function Capture() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+      
+      console.log("[Capture] checkAuth called - session:", session);
+      console.log("[Capture] localStorage keys:", Object.keys(localStorage).filter(k => k.includes('supabase')));
+      
       if (!session) {
+        console.log("[Capture] No session found, navigating to /login");
         navigate("/login");
         return;
       }
+      
+      console.log("[Capture] Session exists, user ID:", session.user?.id, "is_anonymous:", (session.user as any)?.is_anonymous);
 
       const { data: userData, error: userError } = await supabase
         .from("users")
