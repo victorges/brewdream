@@ -5,11 +5,41 @@ import React, {
   useCallback,
   useState,
 } from 'react';
-import {
-  createDaydreamStream,
-  updateDaydreamPrompts,
-  StreamDiffusionParams,
-} from '@/lib/daydream';
+
+export interface DaydreamStream {
+  id: string;
+  output_playback_id: string;
+  whip_url: string;
+}
+
+export interface StreamDiffusionParams {
+  model_id?: string;
+  prompt: string;
+  negative_prompt?: string;
+  num_inference_steps?: number;
+  seed?: number;
+  t_index_list?: number[];
+  controlnets?: Array<{
+    enabled?: boolean;
+    model_id: string;
+    preprocessor: string;
+    preprocessor_params?: Record<string, unknown>;
+    conditioning_scale: number;
+  }>;
+  ip_adapter?: {
+    enabled?: boolean;
+    type?: 'regular' | 'faceid';
+    scale?: number;
+    weight_type?: string;
+    insightface_model_name?: 'buffalo_l';
+  };
+  ip_adapter_style_image_url?: string;
+}
+
+export interface DaydreamClient {
+  createStream(pipelineId: string, initialParams?: StreamDiffusionParams): Promise<DaydreamStream>;
+  updatePrompts(streamId: string, params: StreamDiffusionParams): Promise<void>;
+}
 
 // Default stream diffusion parameters
 const DEFAULT_STREAM_DIFFUSION_PARAMS = {
@@ -126,6 +156,7 @@ async function startWhipPublish(
 }
 
 export interface DaydreamCanvasProps {
+  client: DaydreamClient;
   className?: string;
   style?: React.CSSProperties;
   canvasRef?: React.Ref<HTMLCanvasElement>; // optional ref to the canvas element
@@ -208,6 +239,7 @@ function computeCoverDrawRect(
 }
 
 export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
+  client,
   params,
   videoSource = { type: 'blank' },
   audioSource = { type: 'silent' },
@@ -687,7 +719,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
 
       try {
         // Use the new updateDaydreamPrompts function
-        await updateDaydreamPrompts(streamId, {
+        await client.updatePrompts(streamId, {
           ...DEFAULT_STREAM_DIFFUSION_PARAMS,
           ...latest,
         });
@@ -706,7 +738,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
           });
         }
       }
-    }, [onError]);
+    }, [client, onError]);
 
     const enqueueParamsUpdate = useCallback(() => {
       pendingParamsRef.current = latestParamsRef.current;
@@ -736,7 +768,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
           pipelineId = 'pip_SD15';
         }
 
-        const streamData = await createDaydreamStream(pipelineId, initialParams);
+        const streamData = await client.createStream(pipelineId, initialParams);
         streamIdRef.current = streamData.id;
         playbackIdRef.current = streamData.output_playback_id;
 
@@ -761,7 +793,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
         onError?.(e);
         throw e;
       }
-    }, [buildPublishStream, enqueueParamsUpdate, onError, onReady, params]);
+    }, [client, buildPublishStream, enqueueParamsUpdate, onError, onReady, params]);
 
     // Stop publishing and cleanup
     const stop = useCallback(async () => {
