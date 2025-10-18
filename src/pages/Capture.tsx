@@ -10,6 +10,7 @@ import {
   Sparkles,
   Mic,
   MicOff,
+  RefreshCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import * as Player from "@livepeer/react/player";
@@ -93,6 +94,14 @@ const readBrewParamsFromQuery = (searchParams: URLSearchParams): BrewParams => {
   };
 };
 
+// Read camera type from query string
+const readCameraTypeFromQuery = (searchParams: URLSearchParams): "user" | "environment" | null => {
+  const camera = searchParams.get("camera");
+  if (camera === "front" || camera === "user") return "user";
+  if (camera === "back" || camera === "environment") return "environment";
+  return null;
+};
+
 export default function Capture() {
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -129,7 +138,7 @@ export default function Capture() {
   }, []);
 
   const [cameraType, setCameraType] = useState<"user" | "environment" | null>(
-    null
+    () => readCameraTypeFromQuery(searchParams)
   );
   const [loading, setLoading] = useState(false);
   const [streamId, setStreamId] = useState<string | null>(null);
@@ -184,8 +193,6 @@ export default function Capture() {
   const selectCamera = useCallback(async (type: "user" | "environment") => {
     setCameraType(type);
     transitionToPhase("0-camera-selection-fade-out", 300, "1-design-brew");
-    // Reset prompt for new camera
-    setBrewParams((prev) => ({ ...prev, prompt: "" }));
   }, [transitionToPhase]);
 
   const startStream = useCallback(async () => {
@@ -617,9 +624,14 @@ export default function Capture() {
     }
   }, [playbackUrl, isPlaying]);
 
-  // Persist brew params to query string on change
+  // Persist brew params and camera type to query string on change
   useEffect(() => {
     const newParams = new URLSearchParams();
+    
+    // Add camera type to query string
+    if (cameraType) {
+      newParams.set("camera", cameraType === "user" ? "front" : "back");
+    }
     
     // Only add params that have non-default values
     if (brewParams.prompt) {
@@ -640,7 +652,7 @@ export default function Capture() {
 
     // Update URL without triggering navigation
     setSearchParams(newParams, { replace: true });
-  }, [brewParams, setSearchParams]);
+  }, [brewParams, cameraType, setSearchParams]);
 
   const onDaydreamReady = useCallback(
     async ({ streamId: sid, playbackId: pid, playbackUrl: purl }) => {
@@ -946,6 +958,29 @@ export default function Capture() {
                 )}
               </Button>
             </div>
+
+            {/* Switch Camera Button - Only show on mobile devices */}
+            {hasMultipleCameras() && (
+              <div className="absolute top-3 right-3">
+                <Button
+                  onClick={() => {
+                    const newCamera = cameraType === "user" ? "environment" : "user";
+                    // Stop current stream and switch camera
+                    setPlaybackId(null);
+                    setPlaybackUrl(null);
+                    setStreamId(null);
+                    setCameraType(newCamera);
+                  }}
+                  disabled={!playbackId || recording || uploadingClip}
+                  size="icon"
+                  variant="secondary"
+                  className="w-12 h-12 rounded-full shadow-lg transition-all duration-200 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 disabled:opacity-50"
+                  title="Switch camera"
+                >
+                  <RefreshCcw className="w-5 h-5" />
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
