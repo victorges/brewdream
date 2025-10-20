@@ -43,7 +43,10 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
     let mounted = true;
     let hasNavigated = false;
 
+    console.log('[useUser] Effect running, allowSignedOff:', allowSignedOff);
+
     const syncUser = async () => {
+      console.log('[useUser] syncUser called, mounted:', mounted, 'hasNavigated:', hasNavigated);
       try {
         // Get current session
         const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
@@ -65,6 +68,7 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
             setLoading(false);
             
             if (!allowSignedOff && !hasNavigated) {
+              console.log('[useUser] Navigating to login (session error)');
               hasNavigated = true;
               navigate('/login');
             }
@@ -186,7 +190,8 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
     syncUser();
 
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[useUser] Auth state changed:', event, 'mounted:', mounted);
       if (!mounted) return;
       
       // Re-run the sync when auth state changes

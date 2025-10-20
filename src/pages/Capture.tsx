@@ -409,16 +409,22 @@ export default function Capture() {
           tIndexList: canvasParams?.t_index_list || [],
         });
 
+        const clipUrl = `/clip/${clip.id}`;
+        console.log("Clip saved to database, navigating to:", clipUrl);
+
         toast({
           title: "Clip created!",
           description: "Redirecting to your clip...",
         });
 
-        console.log("About to navigate to clip page:", `/clip/${clip.id}`);
-        navigate(`/clip/${clip.id}`);
-        console.log("Navigate called");
+        // Navigate immediately - don't wait for anything else
+        console.log("Calling navigate() now");
+        navigate(clipUrl);
+        console.log("navigate() called");
       } catch (error: unknown) {
         console.error("Error saving clip to database:", error);
+        // Reset the flag on error so user can try again
+        clipSavedRef.current = false;
         toast({
           title: "Error creating clip",
           description: error instanceof Error ? error.message : String(error),
