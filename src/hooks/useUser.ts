@@ -41,6 +41,7 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
 
   useEffect(() => {
     let mounted = true;
+    let hasNavigated = false;
 
     const syncUser = async () => {
       try {
@@ -49,7 +50,8 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
         
         if (sessionError) {
           console.error('Error getting session:', sessionError);
-          if (!allowSignedOff) {
+          if (!allowSignedOff && !hasNavigated) {
+            hasNavigated = true;
             navigate('/login');
           }
           return;
@@ -62,7 +64,8 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
             setUser(null);
             setLoading(false);
             
-            if (!allowSignedOff) {
+            if (!allowSignedOff && !hasNavigated) {
+              hasNavigated = true;
               navigate('/login');
             }
           }
@@ -161,7 +164,8 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
           console.error('All upsert attempts failed:', lastError);
           setLoading(false);
           
-          if (!allowSignedOff) {
+          if (!allowSignedOff && !hasNavigated) {
+            hasNavigated = true;
             navigate('/login');
           }
         }
@@ -171,7 +175,8 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
         if (mounted) {
           setLoading(false);
           
-          if (!allowSignedOff) {
+          if (!allowSignedOff && !hasNavigated) {
+            hasNavigated = true;
             navigate('/login');
           }
         }
@@ -192,7 +197,8 @@ export function useUser(options: UseUserOptions = {}): UseUserReturn {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [allowSignedOff, navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowSignedOff]); // navigate is stable and should not be in deps
 
   return { user, loading, session };
 }
