@@ -187,6 +187,12 @@ export default function Capture() {
 
   // Use the unified user hook - will redirect to login if not authenticated
   const { user } = useUser();
+  const showAdvancedControls = useMemo(() => {
+    if (searchParams.has("debug")) {
+      return true;
+    }
+    return /@livepeer\.(org|com)$/.test(user?.email ?? "");
+  }, [user?.email, searchParams]);
 
   const onParamsError = useCallback((err: Error) => {
     toast({title: "Error", description: err.message, variant: "destructive"});
@@ -818,6 +824,7 @@ export default function Capture() {
             <DiffusionParams
               cameraType={cameraType}
               brewParams={brewParams}
+              showAdvancedControls={showAdvancedControls}
               onBrewParamsChange={setBrewParams}
               handleStreamDiffusionParams={setCanvasParams}
               onError={onParamsError}
@@ -1014,6 +1021,7 @@ export default function Capture() {
             <DiffusionParams
               cameraType={cameraType}
               brewParams={brewParams}
+              showAdvancedControls={showAdvancedControls}
               onBrewParamsChange={setBrewParams}
               handleStreamDiffusionParams={setCanvasParams}
               onError={onParamsError}
