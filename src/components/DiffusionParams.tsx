@@ -12,6 +12,89 @@ import { useToast } from "@/hooks/use-toast";
 import type { StreamDiffusionParams } from "@/components/DaydreamCanvas";
 import prompts from "@/components/prompts";
 
+// Utility function to download image, crop/resize to 512x512, and convert to base64 JPEG
+const imageUrlToBase64 = async (url: string): Promise<string> => {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch image: ${response.statusText}`);
+    }
+
+    const blob = await response.blob();
+
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous'; // Enable CORS for external images
+
+      img.onload = () => {
+        try {
+          // Create canvas for cropping/resizing
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'));
+            return;
+          }
+
+          // Set canvas size to 512x512
+          canvas.width = 512;
+          canvas.height = 512;
+
+          // Calculate crop dimensions to maintain aspect ratio
+          const imgAspect = img.width / img.height;
+          const canvasAspect = 1; // 512x512 is square
+
+          let sourceX = 0;
+          let sourceY = 0;
+          let sourceWidth = img.width;
+          let sourceHeight = img.height;
+
+          if (imgAspect > canvasAspect) {
+            // Image is wider than square - crop width
+            sourceWidth = img.height;
+            sourceX = (img.width - sourceWidth) / 2;
+          } else if (imgAspect < canvasAspect) {
+            // Image is taller than square - crop height
+            sourceHeight = img.width;
+            sourceY = (img.height - sourceHeight) / 2;
+          }
+
+          // Draw cropped and resized image to canvas
+          ctx.drawImage(
+            img,
+            sourceX, sourceY, sourceWidth, sourceHeight,
+            0, 0, 512, 512
+          );
+
+          // Convert to JPEG with bad quality (0.1)
+          const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.1);
+          resolve(jpegDataUrl);
+        } catch (error) {
+          reject(new Error(`Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`));
+        }
+      };
+
+      img.onerror = () => {
+        reject(new Error('Failed to load image'));
+      };
+
+      // Create object URL from blob and set as image source
+      const objectUrl = URL.createObjectURL(blob);
+      img.src = objectUrl;
+
+      // Clean up object URL after image loads
+      const originalOnload = img.onload;
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        originalOnload?.call(img);
+      };
+    });
+  } catch (error) {
+    throw new Error(`Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+};
+
 const TEXTURES = [
   {
     id: "lava",
@@ -124,7 +207,7 @@ export function DiffusionParams({
     onBrewParamsChange(newBrewParams);
   }, [brewParams, onBrewParamsChange]);
 
-  useEffect(() => {
+  const processStreamParams = useCallback(async () => {
     // Compute new stream params
     let sdParams: StreamDiffusionParams = {
       model_id: "stabilityai/sdxl-turbo",
@@ -177,20 +260,39 @@ export function DiffusionParams({
         });
         return;
       }
-      sdParams = {
-        ...sdParams,
-        ip_adapter: {
-          enabled: true,
-          type: "regular",
-          scale: textureWeight[0],
-          weight_type: "linear",
-          insightface_model_name: "buffalo_l",
-        },
-        ip_adapter_style_image_url: textureUrl,
-      };
+
+      try {
+        // Convert image URL to base64
+        const base64Image = await imageUrlToBase64(textureUrl);
+
+        sdParams = {
+          ...sdParams,
+          ip_adapter: {
+            enabled: true,
+            type: "regular",
+            scale: textureWeight[0],
+            weight_type: "linear",
+            insightface_model_name: "buffalo_l",
+          },
+          ip_adapter_style_image_url: base64Image,
+        };
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Failed to process texture image';
+        onError?.(new Error(errorMessage));
+        toast({
+          title: "Texture processing failed",
+          description: errorMessage,
+          variant: "destructive"
+        });
+        return;
+      }
     }
+
     handleStreamDiffusionParams(sdParams);
   }, [handleStreamDiffusionParams, prompt, intensity, quality, control, textureId, textureWeight, onError, toast]);
+  useEffect(() => {
+    processStreamParams();
+  }, [processStreamParams]);
 
   const shufflePrompt = useCallback(() => {
     const possiblePrompts = !cameraType
