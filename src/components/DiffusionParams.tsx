@@ -13,7 +13,7 @@ import type { StreamDiffusionParams } from "@/components/DaydreamCanvas";
 import prompts from "@/components/prompts";
 
 // Utility function to download image, crop/resize to 512x512, and convert to base64 JPEG
-const imageUrlToBase64 = async (url: string): Promise<string> => {
+const imageUrlToBase64 = async (url: string, setProcessedImageUrl?: (url: string | null) => void): Promise<string> => {
   try {
     const response = await fetch(url);
     if (!response.ok) {
@@ -69,6 +69,10 @@ const imageUrlToBase64 = async (url: string): Promise<string> => {
 
           // Convert to JPEG with bad quality (0.1)
           const jpegDataUrl = canvas.toDataURL('image/jpeg', 0.1);
+
+          // Update the processed image display
+          setProcessedImageUrl?.(jpegDataUrl);
+
           resolve(jpegDataUrl);
         } catch (error) {
           reject(new Error(`Failed to process image: ${error instanceof Error ? error.message : 'Unknown error'}`));
@@ -192,6 +196,7 @@ export function DiffusionParams({
   onError,
 }: DiffusionParamsProps) {
   const [texturePopoverOpen, setTexturePopoverOpen] = useState(false);
+  const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
   const { toast } = useToast();
 
   // brewParams state is controlled by the parent component
@@ -263,7 +268,7 @@ export function DiffusionParams({
 
       try {
         // Convert image URL to base64
-        const base64Image = await imageUrlToBase64(textureUrl);
+        const base64Image = await imageUrlToBase64(textureUrl, setProcessedImageUrl);
 
         sdParams = {
           ...sdParams,
@@ -278,6 +283,7 @@ export function DiffusionParams({
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to process texture image';
+        setProcessedImageUrl(null);
         onError?.(new Error(errorMessage));
         toast({
           title: "Texture processing failed",
@@ -312,6 +318,7 @@ export function DiffusionParams({
   const handleRemoveTexture = useCallback(() => {
     updateBrewParams({ texture: null });
     setTexturePopoverOpen(false);
+    setProcessedImageUrl(null);
   }, [updateBrewParams]);
 
   const handleSelectTexture = useCallback((textureId: string) => {
@@ -491,6 +498,22 @@ export function DiffusionParams({
             step={0.05}
             className="w-full accent-neutral-400 h-6"
           />
+        </div>
+      )}
+
+      {/* Processed Image Display */}
+      {processedImageUrl && (
+        <div>
+          <label className="text-sm font-medium mb-2 block text-neutral-300">
+            Processed Texture (512x512)
+          </label>
+          <div className="flex justify-center">
+            <img
+              src={processedImageUrl}
+              alt="Processed texture"
+              className="w-32 h-32 object-cover rounded-lg border border-neutral-700"
+            />
+          </div>
         </div>
       )}
     </div>
