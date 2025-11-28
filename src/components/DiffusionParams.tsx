@@ -265,7 +265,7 @@ export function DiffusionParams({
                     value={customParamsJson}
                     onChange={(e) => setCustomParamsJson(e.target.value)}
                     placeholder="Enter JSON configuration..."
-                    className={`bg-neutral-950 border focus:ring-0 text-neutral-100 placeholder:text-neutral-500 min-h-[300px] font-mono text-xs ${
+                    className={`bg-neutral-950 border focus:ring-0 text-neutral-100 placeholder:text-neutral-500 min-h-[180px] font-mono text-xs ${
                       isJsonValid
                         ? 'border-neutral-800 focus:border-neutral-600'
                         : 'border-red-500/50 focus:border-red-500'
