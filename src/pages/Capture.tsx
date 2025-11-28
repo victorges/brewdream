@@ -951,6 +951,7 @@ export default function Capture() {
                   micEnabled ? { type: "microphone" } : { type: "silent" }
                 }
                 params={canvasParams}
+                pipeline={pipeline}
                 onReady={onDaydreamReady}
                 onError={onDaydreamError}
               />}

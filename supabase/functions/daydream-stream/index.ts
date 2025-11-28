@@ -24,21 +24,14 @@ serve(async (req) => {
       throw new Error(`${apiKeyEnvName} is not configured`);
     }
 
-    const pipeline_id = body.pipeline_id || 'pip_SDXL-turbo';
     const initialParams = body.initialParams;
+    const pipeline = body.pipeline || 'streamdiffusion'; // Default to streamdiffusion (the main pipeline)
     const baseUrl = isStaging ? 'https://api.daydream.monster' : 'https://api.daydream.live';
 
-    console.log('[EDGE] Creating Daydream stream with pipeline:', pipeline_id);
-
-    // Create payload with pipeline_id and optional pipeline_params
-    const createPayload: any = {
-      pipeline_id
-    };
-
-    // If initial params provided, include them as pipeline_params in creation
+    console.log(`[EDGE] Creating Daydream stream with pipeline=${pipeline} params=${JSON.stringify(initialParams)}`);
+    const createPayload: any = { pipeline };
     if (initialParams) {
-      console.log('[EDGE] Including initial params as pipeline_params:', JSON.stringify(initialParams, null, 2));
-      createPayload.pipeline_params = initialParams;
+      createPayload.params = initialParams;
     }
 
     const createResponse = await fetch(`${baseUrl}/v1/streams`, {
