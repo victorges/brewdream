@@ -11,7 +11,8 @@ const createDaydreamStream = async (pipelineId: string, initialParams?: StreamDi
   const { data, error } = await supabase.functions.invoke('daydream-stream', {
     body: {
       pipeline_id: pipelineId,
-      initialParams // Will be sent as pipeline_params to Daydream
+      initialParams, // Will be sent as pipeline_params to Daydream
+      isStaging: typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('staging')
     }
   });
 
@@ -41,7 +42,8 @@ const updateDaydreamPrompts = async (
   const { data, error } = await supabase.functions.invoke('daydream-prompt', {
     body: {
       streamId,
-      params
+      params,
+      isStaging: typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('staging')
     }
   });
 

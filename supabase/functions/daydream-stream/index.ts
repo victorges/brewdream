@@ -14,14 +14,19 @@ serve(async (req) => {
   console.log('[EDGE] daydream-stream function called (version: 2025-10-12-correct-api-endpoint)');
 
   try {
-    const DAYDREAM_API_KEY = Deno.env.get('DAYDREAM_API_KEY');
+    const body = await req.json();
+    const isStaging = body.isStaging;
+
+    const apiKeyEnvName = isStaging ? 'STAGING_DAYDREAM_API_KEY' : 'DAYDREAM_API_KEY';
+    const DAYDREAM_API_KEY = Deno.env.get(apiKeyEnvName);
+
     if (!DAYDREAM_API_KEY) {
-      throw new Error('DAYDREAM_API_KEY is not configured');
+      throw new Error(`${apiKeyEnvName} is not configured`);
     }
 
-    const body = await req.json();
     const pipeline_id = body.pipeline_id || 'pip_SDXL-turbo';
     const initialParams = body.initialParams;
+    const baseUrl = isStaging ? 'https://api.daydream.monster' : 'https://api.daydream.live';
 
     console.log('[EDGE] Creating Daydream stream with pipeline:', pipeline_id);
 
@@ -36,7 +41,7 @@ serve(async (req) => {
       createPayload.pipeline_params = initialParams;
     }
 
-    const createResponse = await fetch('https://api.daydream.live/v1/streams', {
+    const createResponse = await fetch(`${baseUrl}/v1/streams`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${DAYDREAM_API_KEY}`,
