@@ -405,6 +405,12 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
     const playbackUrlRef = useRef<string | null>(null);
     const readyForParamUpdatesRef = useRef<boolean>(false);
 
+    // Retry state refs
+    const whipRetryCountRef = useRef(0);
+    const connectionStableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isStoppingRef = useRef(false);
+    const restartRef = useRef<() => Promise<void>>(async () => {});
+
     // Flags for background auto-restart
     const wasRunningRef = useRef<boolean>(false);
 
@@ -869,6 +875,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
       if (pcRef.current) return; // already running
       try {
         setIsStarted(true);
+        isStoppingRef.current = false;
 
         // Create stream with initial params FIRST (with retry)
         const initialParams: StreamDiffusionParams = {
@@ -910,6 +917,41 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
             },
             onConnectionStateChange: (state) => {
               onConnectionStateChange?.(state);
+
+              if (state === 'connected') {
+                // Connection established, schedule reset of retry count
+                if (connectionStableTimeoutRef.current) {
+                  clearTimeout(connectionStableTimeoutRef.current);
+                }
+                connectionStableTimeoutRef.current = setTimeout(() => {
+                  whipRetryCountRef.current = 0;
+                }, 10000); // 10 seconds stable = reset retries
+              } else if (state === 'disconnected' || state === 'failed') {
+                // Cancel stable reset
+                if (connectionStableTimeoutRef.current) {
+                  clearTimeout(connectionStableTimeoutRef.current);
+                  connectionStableTimeoutRef.current = null;
+                }
+
+                if (isStoppingRef.current) return;
+
+                const maxRetries = 3;
+                if (whipRetryCountRef.current < maxRetries) {
+                  whipRetryCountRef.current++;
+                  const delay = 1000 * Math.pow(2, whipRetryCountRef.current - 1);
+                  console.log(`[DaydreamCanvas] Connection lost, retrying in ${delay}ms... (Attempt ${whipRetryCountRef.current}/${maxRetries})`);
+
+                  setTimeout(() => {
+                    if (!isStoppingRef.current) {
+                      restartRef.current();
+                    }
+                  }, delay);
+                } else {
+                  console.error('[DaydreamCanvas] Connection lost, retry limit exceeded');
+                  onError?.(new Error('Connection lost, retry limit exceeded'));
+                  onWhipRetryLimitExceeded?.();
+                }
+              }
             },
           }
         );
@@ -935,7 +977,14 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
     // Stop publishing and cleanup
     const stop = useCallback(async () => {
       setIsStarted(false);
+      isStoppingRef.current = true;
       readyForParamUpdatesRef.current = false;
+
+      // Clear stable timeout
+      if (connectionStableTimeoutRef.current) {
+        clearTimeout(connectionStableTimeoutRef.current);
+        connectionStableTimeoutRef.current = null;
+      }
 
       // Close RTCPeerConnection
       if (pcRef.current) {
@@ -985,6 +1034,14 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
       playbackIdRef.current = null;
       playbackUrlRef.current = null;
     }, []);
+
+    // Keep restartRef updated to break circular dependency
+    useEffect(() => {
+      restartRef.current = async () => {
+        await stop();
+        await start();
+      };
+    }, [start, stop]);
 
     // Background auto-stop/start (mobile default)
     useEffect(() => {
