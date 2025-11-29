@@ -38,7 +38,7 @@ export interface StreamDiffusionParams {
 
 export interface DaydreamClient {
   createStream(pipeline: string, initialParams?: StreamDiffusionParams): Promise<DaydreamStream>;
-  updatePrompts(streamId: string, params: StreamDiffusionParams): Promise<void>;
+  updatePrompts(streamId: string, params: StreamDiffusionParams, pipeline: string): Promise<void>;
 }
 
 // Default stream diffusion parameters
@@ -915,7 +915,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
           () => client.updatePrompts(streamId, {
             ...DEFAULT_STREAM_DIFFUSION_PARAMS,
             ...latest,
-          }),
+          }, pipeline),
           {
             maxRetries: 3,
             baseDelayMs: 1000,
@@ -939,7 +939,7 @@ export const DaydreamCanvas: React.FC<DaydreamCanvasProps> = ({
           });
         }
       }
-    }, [client, onError]);
+    }, [client, onError, pipeline]);
 
     const enqueueParamsUpdate = useCallback(() => {
       pendingParamsRef.current = latestParamsRef.current;
