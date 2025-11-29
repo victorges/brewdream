@@ -136,9 +136,6 @@ async function startWhipPublish(
 ): Promise<{ pc: RTCPeerConnection; playbackUrl: string | null }> {
   const maxRetries = options.maxRetries ?? 2;
   const retryDelayBaseMs = options.retryDelayBaseMs ?? 1000;
-  let retryCount = 0;
-  let lastRetryTime = 0;
-  const RETRY_RESET_SECONDS = 10;
 
   const attemptConnection = async (): Promise<{ pc: RTCPeerConnection; playbackUrl: string | null }> => {
     const pc = new RTCPeerConnection({
@@ -150,110 +147,26 @@ async function startWhipPublish(
       iceCandidatePoolSize: 3,
     });
 
-    // Set up connection state monitoring
-    let disconnectedGraceTimeout: ReturnType<typeof setTimeout> | null = null;
-    let connectionEstablished = false;
-
     pc.onconnectionstatechange = () => {
       const state = pc.connectionState;
       options.onConnectionStateChange?.(state);
 
-      switch (state) {
-        case 'connected':
-          connectionEstablished = true;
-          if (disconnectedGraceTimeout) {
-            clearTimeout(disconnectedGraceTimeout);
-            disconnectedGraceTimeout = null;
-          }
-          break;
-        case 'disconnected':
-          connectionEstablished = false;
-          if (disconnectedGraceTimeout) {
-            clearTimeout(disconnectedGraceTimeout);
-            disconnectedGraceTimeout = null;
-          }
-          try {
-            pc.restartIce();
-          } catch {
-            // ICE restart failed, will retry connection
-          }
-          // Grace period before considering it a failure
-          disconnectedGraceTimeout = setTimeout(() => {
-            if (pc.connectionState === 'disconnected') {
-              const now = Date.now();
-              // Reset retry count if enough time has passed since last retry
-              if (now - lastRetryTime > RETRY_RESET_SECONDS * 1000) {
-                retryCount = 0;
-              }
-
-              if (retryCount < maxRetries) {
-                retryCount++;
-                lastRetryTime = now;
-                const delay = retryDelayBaseMs * Math.pow(2, retryCount - 1);
-                options.onRetry?.(retryCount, new Error('Connection disconnected'));
-                setTimeout(() => {
-                  attemptConnection().catch(() => {
-                    if (retryCount >= maxRetries) {
-                      options.onRetryLimitExceeded?.();
-                    }
-                  });
-                }, delay);
-              } else {
-                options.onRetryLimitExceeded?.();
-              }
-            }
-          }, 2000);
-          break;
-        case 'failed': {
-          connectionEstablished = false;
-          if (disconnectedGraceTimeout) {
-            clearTimeout(disconnectedGraceTimeout);
-            disconnectedGraceTimeout = null;
-          }
-
-          const now = Date.now();
-          // Reset retry count if enough time has passed since last retry
-          if (now - lastRetryTime > RETRY_RESET_SECONDS * 1000) {
-            retryCount = 0;
-          }
-
-          if (retryCount < maxRetries) {
-            retryCount++;
-            lastRetryTime = now;
-            const delay = retryDelayBaseMs * Math.pow(2, retryCount - 1);
-            options.onRetry?.(retryCount, new Error('Connection failed'));
-            setTimeout(() => {
-              attemptConnection().catch(() => {
-                if (retryCount >= maxRetries) {
-                  options.onRetryLimitExceeded?.();
-                }
-              });
-            }, delay);
-          } else {
-            options.onRetryLimitExceeded?.();
-          }
-          break;
+      if (state === 'disconnected') {
+        try {
+          pc.restartIce();
+        } catch {
+          // Ignore
         }
-        case 'closed':
-          connectionEstablished = false;
-          if (disconnectedGraceTimeout) {
-            clearTimeout(disconnectedGraceTimeout);
-            disconnectedGraceTimeout = null;
-          }
-          break;
       }
     };
 
     // Handle ICE connection state changes
     pc.oniceconnectionstatechange = () => {
-      if (
-        (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') &&
-        retryCount < maxRetries
-      ) {
+      if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
         try {
           pc.restartIce();
         } catch {
-          // ICE restart failed, will retry connection
+          // Ignore
         }
       }
     };
@@ -290,38 +203,42 @@ async function startWhipPublish(
 
     // Send offer to WHIP endpoint
     const offerSdp = pc.localDescription!.sdp!;
-    const response = await fetch(whipUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/sdp',
-      },
-      body: offerSdp,
-    });
 
-    if (!response.ok) {
-      // Don't retry on 4xx errors
-      if (response.status >= 400 && response.status < 500) {
-        throw new Error(`WHIP publish failed (non-retryable): ${response.status} ${response.statusText}`);
+    try {
+      const response = await fetch(whipUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/sdp',
+        },
+        body: offerSdp,
+      });
+
+      if (!response.ok) {
+        // Don't retry on 4xx errors
+        if (response.status >= 400 && response.status < 500) {
+          throw new Error(`WHIP publish failed (non-retryable): ${response.status} ${response.statusText}`);
+        }
+        throw new Error(`WHIP publish failed: ${response.status} ${response.statusText}`);
       }
-      throw new Error(`WHIP publish failed: ${response.status} ${response.statusText}`);
+
+      // Capture low-latency WebRTC playback URL from response headers
+      const playbackUrl = response.headers.get('livepeer-playback-url') || null;
+
+      // Get answer SDP and set it
+      const answerSdp = await response.text();
+      await pc.setRemoteDescription({
+        type: 'answer',
+        sdp: answerSdp,
+      });
+
+      return { pc, playbackUrl };
+    } catch (error) {
+      pc.close();
+      throw error;
     }
-
-    // Capture low-latency WebRTC playback URL from response headers
-    const playbackUrl = response.headers.get('livepeer-playback-url') || null;
-
-    // Get answer SDP and set it
-    const answerSdp = await response.text();
-    await pc.setRemoteDescription({
-      type: 'answer',
-      sdp: answerSdp,
-    });
-
-    retryCount = 0; // Reset on successful initial connection
-    lastRetryTime = 0; // Reset timestamp on success
-    return { pc, playbackUrl };
   };
 
-  // Initial attempt with retry wrapper for initial connection failures
+  // Initial attempt with retry wrapper
   return retryWithBackoff(
     attemptConnection,
     {
